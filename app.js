@@ -27,7 +27,7 @@ function recordStudy(xp = 0) {
   progress.xp = (progress.xp || 0) + xp;
   saveProgress(); renderDashboard();
 }
-/* ===== Audio: Web Speech dengan fallback Google TTS ===== */
+/* ===== Audio: MP3 TTS utama, Web Speech sebagai cadangan ===== */
 let cachedJapaneseVoices = [];
 function refreshCachedVoices() {
   if (!("speechSynthesis" in window)) { cachedJapaneseVoices = []; return cachedJapaneseVoices; }
@@ -74,23 +74,30 @@ function stopAllAudio() {
     try { activeFallbackAudio.pause(); activeFallbackAudio.currentTime = 0; } catch { /* abaikan */ }
     activeFallbackAudio = null;
   }
-  $$(".speak-btn.playing").forEach(button => setSpeakButtonPlaying(button, false));
+  $$(".speak-btn.playing, .text-button.playing, .button.playing").forEach(button => setSpeakButtonPlaying(button, false));
 }
-function playFallbackAudio(cleanText, button, token) {
+function playFallbackAudio(cleanText, button, token, onError = null) {
   const audio = new Audio(buildFallbackTtsUrl(cleanText));
   activeFallbackAudio = audio;
   let done = false;
   const finish = errorMessage => {
     if (done) return; done = true;
     if (activeFallbackAudio === audio) activeFallbackAudio = null;
+    if (errorMessage && token === activeSpeechToken) {
+      if (onError) onError(errorMessage);
+      else {
+        setSpeakButtonPlaying(button, false);
+        notifyAudioProblem(errorMessage);
+      }
+      return;
+    }
     setSpeakButtonPlaying(button, false);
-    if (errorMessage && token === activeSpeechToken) notifyAudioProblem(errorMessage);
   };
   audio.addEventListener("ended", () => finish(), { once: true });
-  audio.addEventListener("error", () => finish("Audio cadangan gagal dimuat."), { once: true });
+  audio.addEventListener("error", () => finish("Audio utama gagal dimuat."), { once: true });
   const playPromise = audio.play();
   if (playPromise && typeof playPromise.catch === "function") {
-    playPromise.catch(() => finish("Audio cadangan gagal diputar."));
+    playPromise.catch(() => finish("Audio utama gagal diputar."));
   }
   return audio;
 }
@@ -101,42 +108,51 @@ function speak(text, button = null) {
   const token = activeSpeechToken;
   setSpeakButtonPlaying(button, true);
 
-  if (!("speechSynthesis" in window)) {
-    playFallbackAudio(cleanText, button, token);
+  // MP3 TTS adalah jalur utama lintas perangkat; Web Speech hanya dipakai bila MP3 gagal.
+  playFallbackAudio(cleanText.slice(0, 220), button, token, () => {
+    console.warn("Audio MP3 utama gagal; mencoba Web Speech sebagai cadangan.");
+    speakWithWebSpeech(cleanText, button, token);
+  });
+}
+function speakWithWebSpeech(cleanText, button, token) {
+  setSpeakButtonPlaying(button, true);
+  if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+    setSpeakButtonPlaying(button, false);
+    if (token === activeSpeechToken) notifyAudioProblem("Audio belum bisa diputar di browser ini.");
     return;
   }
 
-  let voices = refreshCachedVoices();
-  const utterance = new SpeechSynthesisUtterance(cleanText.slice(0, 220));
+  const voices = refreshCachedVoices();
+  let utterance;
+  try {
+    utterance = new SpeechSynthesisUtterance(cleanText.slice(0, 220));
+  } catch {
+    setSpeakButtonPlaying(button, false);
+    if (token === activeSpeechToken) notifyAudioProblem("Audio belum bisa diputar di browser ini.");
+    return;
+  }
   utterance.lang = "ja-JP"; utterance.rate = 0.88;
   const japaneseVoice = voices.find(v => v) || cachedJapaneseVoices[0];
   if (japaneseVoice) utterance.voice = japaneseVoice;
 
-  let started = false;
-  let fallbackStarted = false;
-  const startFallbackOnce = errorMessage => {
-    if (fallbackStarted) return; fallbackStarted = true;
-    if (token !== activeSpeechToken) return;
-    setSpeakButtonPlaying(button, false);
-    playFallbackAudio(cleanText, button, token);
-    if (errorMessage) console.warn(errorMessage);
-  };
-  utterance.onstart = () => { started = true; };
   utterance.onend = () => { if (token === activeSpeechToken) setSpeakButtonPlaying(button, false); };
   utterance.onerror = event => {
-    const errorName = event && event.error ? ` (${event.error})` : "";
-    startFallbackOnce(`Web Speech gagal${errorName}; memakai audio cadangan.`);
+    if (token !== activeSpeechToken) return;
+    setSpeakButtonPlaying(button, false);
+    const errorName = event && event.error ? String(event.error) : "";
+    if (errorName !== "interrupted" && errorName !== "canceled") {
+      notifyAudioProblem("Audio belum bisa diputar. Periksa suara perangkat lalu coba lagi.");
+    }
   };
 
   try {
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
-    // Sebagian browser tidak memicu error walau suara tidak keluar; bila belum mulai, pakai cadangan.
-    setTimeout(() => {
-      if (!started && token === activeSpeechToken) startFallbackOnce("Web Speech tidak mulai; memakai audio cadangan.");
-    }, 1600);
   } catch {
-    startFallbackOnce("Web Speech tidak tersedia aktif; memakai audio cadangan.");
+    if (token === activeSpeechToken) {
+      setSpeakButtonPlaying(button, false);
+      notifyAudioProblem("Audio belum bisa diputar di browser ini.");
+    }
   }
 }
 function speakButton(text, label = "🔊") {
