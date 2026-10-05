@@ -11,7 +11,7 @@ Aplikasi web statis berbahasa Indonesia untuk belajar bahasa Jepang dari fondasi
 - Kanji explorer: contoh kanji per level N5–N1 dengan onyomi, kunyomi, arti Indonesia, contoh kata, filter level, dan pencarian.
 - Kuis acak 10 soal untuk kana, kosakata, kanji, dan grammar dengan skor, XP, dan skor terbaik lokal.
 - Pencarian terpadu kosakata, kanji, dan grammar.
-- Audio pengucapan bahasa Jepang memakai Web Speech API (`ja-JP`) bila browser menyediakan suara Jepang.
+- Audio pengucapan bahasa Jepang diputar dari file MP3 same-origin di `assets/audio/` melalui `audio-map.js`; jika teks belum terpetakan, aplikasi mencadangkan ke Google Translate TTS lalu Web Speech API (`ja-JP`).
 
 ## Status kurikulum
 

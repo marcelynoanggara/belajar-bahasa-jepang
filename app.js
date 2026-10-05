@@ -50,6 +50,48 @@ function buildFallbackTtsUrl(text, maxLength = 140) {
   const cleanText = String(text || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
   return `https://translate.google.com/translate_tts?ie=UTF-8&tl=ja&client=tw-ob&q=${encodeURIComponent(cleanText)}`;
 }
+function normalizeSpeechText(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+function localAudioPathFor(cleanText) {
+  if (typeof AUDIO_MAP === "undefined" || !AUDIO_MAP || typeof AUDIO_MAP !== "object") return null;
+  const path = AUDIO_MAP[cleanText];
+  return typeof path === "string" && /^assets\/audio\/[a-f0-9]{16}\.mp3$/.test(path) ? path : null;
+}
+function playAudioSource(src, button, token, onError, errorLabel) {
+  const audio = new Audio(src);
+  activeFallbackAudio = audio;
+  let done = false;
+  const finish = errorMessage => {
+    if (done) return; done = true;
+    if (activeFallbackAudio === audio) activeFallbackAudio = null;
+    if (errorMessage && token === activeSpeechToken) {
+      if (onError) { setSpeakButtonPlaying(button, false); onError(errorMessage); }
+      else {
+        setSpeakButtonPlaying(button, false);
+        notifyAudioProblem(errorMessage);
+      }
+      return;
+    }
+    setSpeakButtonPlaying(button, false);
+  };
+  audio.addEventListener("ended", () => finish(), { once: true });
+  audio.addEventListener("error", () => finish(`${errorLabel} gagal dimuat.`), { once: true });
+  const playPromise = audio.play();
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise.catch(() => finish(`${errorLabel} gagal diputar.`));
+  }
+  return audio;
+}
+function playLocalAudio(cleanText, button, token, onError) {
+  const src = localAudioPathFor(cleanText);
+  if (!src) return false;
+  playAudioSource(src, button, token, onError, "Audio lokal");
+  return true;
+}
+function playFallbackAudio(cleanText, button, token, onError = null) {
+  return playAudioSource(buildFallbackTtsUrl(cleanText), button, token, onError, "Audio utama");
+}
 function setSpeakButtonPlaying(button, isPlaying) {
   if (!button) return;
   if (!button.dataset.originalLabel) button.dataset.originalLabel = button.textContent || "🔊";
@@ -76,43 +118,32 @@ function stopAllAudio() {
   }
   $$(".speak-btn.playing, .text-button.playing, .button.playing").forEach(button => setSpeakButtonPlaying(button, false));
 }
-function playFallbackAudio(cleanText, button, token, onError = null) {
-  const audio = new Audio(buildFallbackTtsUrl(cleanText));
-  activeFallbackAudio = audio;
-  let done = false;
-  const finish = errorMessage => {
-    if (done) return; done = true;
-    if (activeFallbackAudio === audio) activeFallbackAudio = null;
-    if (errorMessage && token === activeSpeechToken) {
-      if (onError) onError(errorMessage);
-      else {
-        setSpeakButtonPlaying(button, false);
-        notifyAudioProblem(errorMessage);
-      }
-      return;
-    }
-    setSpeakButtonPlaying(button, false);
-  };
-  audio.addEventListener("ended", () => finish(), { once: true });
-  audio.addEventListener("error", () => finish("Audio utama gagal dimuat."), { once: true });
-  const playPromise = audio.play();
-  if (playPromise && typeof playPromise.catch === "function") {
-    playPromise.catch(() => finish("Audio utama gagal diputar."));
-  }
-  return audio;
-}
 function speak(text, button = null) {
-  const cleanText = String(text || "").replace(/\s+/g, " ").trim();
+  const cleanText = normalizeSpeechText(text);
   if (!cleanText) return;
   stopAllAudio();
   const token = activeSpeechToken;
+  const spokenText = cleanText.slice(0, 220);
   setSpeakButtonPlaying(button, true);
 
-  // MP3 TTS adalah jalur utama lintas perangkat; Web Speech hanya dipakai bila MP3 gagal.
-  playFallbackAudio(cleanText.slice(0, 220), button, token, () => {
-    console.warn("Audio MP3 utama gagal; mencoba Web Speech sebagai cadangan.");
-    speakWithWebSpeech(cleanText, button, token);
-  });
+  const tryRemoteThenWebSpeech = () => {
+    if (token !== activeSpeechToken) return;
+    setSpeakButtonPlaying(button, true);
+    playFallbackAudio(spokenText, button, token, () => {
+      if (token !== activeSpeechToken) return;
+      console.warn("Audio remote gagal; mencoba Web Speech sebagai cadangan terakhir.");
+      speakWithWebSpeech(spokenText, button, token);
+    });
+  };
+
+  // 1) Audio same-origin dari AUDIO_MAP adalah jalur utama agar tidak bergantung domain Google.
+  if (playLocalAudio(spokenText, button, token, () => {
+    console.warn("Audio lokal gagal; mencoba audio remote sebagai cadangan.");
+    tryRemoteThenWebSpeech();
+  })) return;
+
+  // 2) Teks yang belum terpetakan memakai remote, lalu 3) Web Speech.
+  tryRemoteThenWebSpeech();
 }
 function speakWithWebSpeech(cleanText, button, token) {
   setSpeakButtonPlaying(button, true);
