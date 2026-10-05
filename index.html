@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="NihonGo Master — aplikasi belajar bahasa Jepang dari nol hingga N1 dalam Bahasa Indonesia.">
+  <title>NihonGo Master — Belajar Bahasa Jepang 0 sampai N1</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Lewati ke konten utama</a>
+  <header class="site-header">
+    <a class="brand" href="#dashboard" aria-label="NihonGo Master">
+      <span class="brand-mark" aria-hidden="true">日</span>
+      <span><strong>NihonGo Master</strong><small>0 → N1 • Bahasa Indonesia</small></span>
+    </a>
+    <nav class="main-nav" aria-label="Navigasi utama">
+      <a href="#roadmap">Roadmap</a><a href="#lessons">Pelajaran</a><a href="#kana">Kana</a><a href="#kanji">Kanji</a><a href="#quiz">Kuis</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section id="dashboard" class="hero section-shell">
+      <div class="hero-copy">
+        <p class="eyebrow">日本語を、一步ずつ</p>
+        <h1>Belajar Bahasa Jepang dari nol sampai N1.</h1>
+        <p class="lead">Kurikulum interaktif berbahasa Indonesia: kana, kanji, kosakata, grammar, contoh kalimat ber-audio, flashcard, dan kuis. Progresmu tersimpan otomatis di perangkat ini.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#lessons">▶ Mulai pelajaran</a>
+          <button class="button ghost" id="speakHero" type="button">🔊 Dengar: 日本語を勉強しましょう</button>
+        </div>
+        <p class="microcopy">Tanpa akun. Tanpa instalasi. Berjalan sebagai situs statis GitHub Pages.</p>
+      </div>
+      <aside class="progress-card" aria-label="Ringkasan progres">
+        <div class="progress-top"><span>Progres keseluruhan</span><strong id="overallPercent">0%</strong></div>
+        <div class="progress-bar" role="progressbar" aria-label="Progres keseluruhan" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="overallBarWrap"><span id="overallBar"></span></div>
+        <div class="stat-grid">
+          <div><strong id="xpStat">0</strong><span>XP</span></div>
+          <div><strong id="streakStat">0</strong><span>hari streak</span></div>
+          <div><strong id="lessonStat">0</strong><span>materi selesai</span></div>
+          <div><strong id="kanaStat">0</strong><span>kana dikuasai</span></div>
+        </div>
+        <div class="next-box">
+          <span>Rekomendasi berikutnya</span>
+          <strong id="nextLessonTitle">Memuat rekomendasi…</strong>
+          <p id="nextLessonMeta"></p>
+          <button class="button small primary" id="goNextLesson" type="button">Lanjut belajar</button>
+        </div>
+        <button class="text-button danger" id="resetProgress" type="button">Reset progres lokal</button>
+      </aside>
+    </section>
+
+    <section class="notice section-shell" aria-label="Catatan kurikulum">
+      <strong>Versi pertama yang jujur:</strong> roadmap 0→N1 lengkap dan bank inti setiap level sudah dapat dimainkan. Bank kosakata/kanji JLPT resmi tidak diterbitkan sebagai satu daftar tunggal oleh penyelenggara, jadi materi di sini adalah kurikulum inti terkurasi yang dirancang agar terus diperluas—bukan halaman kosong dan bukan klaim “semua ribuan kata sudah habis”.
+    </section>
+
+    <section id="roadmap" class="section-shell">
+      <div class="section-heading"><div><p class="eyebrow">ROADMAP</p><h2>Jalur 0 sampai N1</h2></div><p>Level berikutnya terbuka setelah minimal 60% modul level sebelumnya selesai. Kamu tetap bisa membaca pratinjau materinya.</p></div>
+      <div id="levelGrid" class="level-grid"></div>
+    </section>
+
+    <section id="lessons" class="section-shell split-layout">
+      <div>
+        <div class="section-heading compact"><div><p class="eyebrow">PELAJARAN</p><h2>Materi interaktif</h2></div></div>
+        <label class="field-label" for="lessonLevelFilter">Filter level</label>
+        <select id="lessonLevelFilter" class="select"></select>
+        <div id="lessonList" class="lesson-list"></div>
+      </div>
+      <article class="lesson-panel" id="lessonPanel" aria-live="polite"></article>
+    </section>
+
+    <section id="kana" class="section-shell">
+      <div class="section-heading"><div><p class="eyebrow">KANA TRAINER</p><h2>Hiragana & Katakana</h2></div><p>Klik kartu untuk membalik. Tandai kana yang sudah dikuasai agar masuk progres.</p></div>
+      <div class="trainer-grid">
+        <div class="flashcard-area">
+          <div class="segmented" role="group" aria-label="Pilih aksara">
+            <button type="button" class="segment active" data-script="hiragana">Hiragana</button>
+            <button type="button" class="segment" data-script="katakana">Katakana</button>
+          </div>
+          <button id="flashcard" class="flashcard" type="button" aria-label="Kartu kana, klik untuk membalik">
+            <span class="card-face card-front"><span id="cardKana">あ</span><small id="cardScript">Hiragana</small></span>
+            <span class="card-face card-back"><strong id="cardRomaji">a</strong><span id="cardExample">あい — cinta</span></span>
+          </button>
+          <div class="row-actions">
+            <button class="button ghost" id="prevKana" type="button">← Sebelumnya</button>
+            <button class="button ghost" id="speakKana" type="button">🔊 Dengar</button>
+            <button class="button primary" id="nextKana" type="button">Berikutnya →</button>
+          </div>
+          <button class="button secondary wide" id="markKana" type="button">✓ Tandai sudah dikuasai</button>
+          <p class="center muted" id="kanaCounter"></p>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header"><h3>Tabel kana</h3><input id="kanaSearch" type="search" placeholder="Cari kana / romaji…" aria-label="Cari kana"></div>
+          <div id="kanaChart" class="kana-chart"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="kanji" class="section-shell">
+      <div class="section-heading"><div><p class="eyebrow">KANJI EXPLORER</p><h2>Jelajahi kanji per level</h2></div><p>Filter berdasarkan level atau cari berdasarkan karakter, bacaan, dan arti.</p></div>
+      <div class="toolbar">
+        <select id="kanjiLevelFilter" class="select" aria-label="Filter level kanji"><option value="all">Semua level</option></select>
+        <input id="kanjiSearch" class="search-input" type="search" placeholder="Cari: 水, sui, air, minum…" aria-label="Cari kanji">
+      </div>
+      <div id="kanjiGrid" class="kanji-grid"></div>
+    </section>
+
+    <section id="dictionary" class="section-shell">
+      <div class="section-heading"><div><p class="eyebrow">KAMUS & GRAMMAR</p><h2>Pencarian cepat</h2></div><p>Satu kolom untuk mencari kosakata, kanji, dan pola grammar dari seluruh kurikulum.</p></div>
+      <input id="globalSearch" class="search-input large" type="search" placeholder="Contoh: taberu, makan, 水, partikel, ざるを得ない…" aria-label="Pencarian kosakata kanji grammar">
+      <div id="searchResults" class="search-results"></div>
+    </section>
+
+    <section id="quiz" class="section-shell quiz-layout">
+      <div>
+        <p class="eyebrow">KUIS</p><h2>Uji pemahamanmu</h2>
+        <p>Sepuluh soal acak. Jawaban benar memberi XP dan skor terbaik tersimpan lokal.</p>
+        <label class="field-label" for="quizMode">Mode kuis</label>
+        <select id="quizMode" class="select">
+          <option value="kana">Kana</option><option value="vocab">Kosakata</option><option value="kanji">Kanji</option><option value="grammar">Grammar</option>
+        </select>
+        <button class="button primary wide" id="startQuiz" type="button">Mulai kuis baru</button>
+        <div class="best-score" id="bestScores"></div>
+      </div>
+      <article class="quiz-panel" id="quizPanel"><div class="empty-state">Pilih mode lalu mulai kuis. Soal dibuat dari bank materi aplikasi.</div></article>
+    </section>
+  </main>
+
+  <footer class="site-footer section-shell">
+    <strong>NihonGo Master</strong><span>Belajar sedikit setiap hari lebih kuat daripada belajar banyak sekali saja.</span><span class="jp">毎日少しずつ。</span>
+  </footer>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
