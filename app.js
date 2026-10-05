@@ -27,18 +27,122 @@ function recordStudy(xp = 0) {
   progress.xp = (progress.xp || 0) + xp;
   saveProgress(); renderDashboard();
 }
-function speak(text) {
-  if (!("speechSynthesis" in window)) { alert("Browser ini tidak mendukung Web Speech API."); return; }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text.replace(/\s+/g, " ").trim());
+/* ===== Audio: Web Speech dengan fallback Google TTS ===== */
+let cachedJapaneseVoices = [];
+function refreshCachedVoices() {
+  if (!("speechSynthesis" in window)) { cachedJapaneseVoices = []; return cachedJapaneseVoices; }
+  const voices = window.speechSynthesis.getVoices() || [];
+  cachedJapaneseVoices = voices.filter(v => v && v.lang && v.lang.toLowerCase().replace("_", "-").startsWith("ja"));
+  return cachedJapaneseVoices;
+}
+if ("speechSynthesis" in window) {
+  refreshCachedVoices();
+  if (typeof window.speechSynthesis.addEventListener === "function") {
+    window.speechSynthesis.addEventListener("voiceschanged", refreshCachedVoices);
+  } else if ("onvoiceschanged" in window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = refreshCachedVoices;
+  }
+}
+let activeFallbackAudio = null;
+let activeSpeechToken = 0;
+let audioNoticeShown = false;
+function buildFallbackTtsUrl(text, maxLength = 140) {
+  const cleanText = String(text || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+  return `https://translate.google.com/translate_tts?ie=UTF-8&tl=ja&client=tw-ob&q=${encodeURIComponent(cleanText)}`;
+}
+function setSpeakButtonPlaying(button, isPlaying) {
+  if (!button) return;
+  if (!button.dataset.originalLabel) button.dataset.originalLabel = button.textContent || "🔊";
+  const original = button.dataset.originalLabel;
+  button.classList.toggle("playing", isPlaying);
+  button.setAttribute("aria-busy", isPlaying ? "true" : "false");
+  if (isPlaying && /^🔊/.test(original)) button.textContent = "🔊 …";
+  if (!isPlaying) button.textContent = original;
+}
+function notifyAudioProblem(message = "Audio belum bisa diputar. Coba sekali lagi.") {
+  console.warn(message);
+  if (!audioNoticeShown) {
+    audioNoticeShown = true;
+    setTimeout(() => { audioNoticeShown = false; }, 8000);
+    if (typeof alert === "function") alert(`${message}\n\nJika masih gagal, periksa koneksi internet atau aktifkan suara/browser lain.`);
+  }
+}
+function stopAllAudio() {
+  activeSpeechToken += 1;
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  if (activeFallbackAudio) {
+    try { activeFallbackAudio.pause(); activeFallbackAudio.currentTime = 0; } catch { /* abaikan */ }
+    activeFallbackAudio = null;
+  }
+  $$(".speak-btn.playing").forEach(button => setSpeakButtonPlaying(button, false));
+}
+function playFallbackAudio(cleanText, button, token) {
+  const audio = new Audio(buildFallbackTtsUrl(cleanText));
+  activeFallbackAudio = audio;
+  let done = false;
+  const finish = errorMessage => {
+    if (done) return; done = true;
+    if (activeFallbackAudio === audio) activeFallbackAudio = null;
+    setSpeakButtonPlaying(button, false);
+    if (errorMessage && token === activeSpeechToken) notifyAudioProblem(errorMessage);
+  };
+  audio.addEventListener("ended", () => finish(), { once: true });
+  audio.addEventListener("error", () => finish("Audio cadangan gagal dimuat."), { once: true });
+  const playPromise = audio.play();
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise.catch(() => finish("Audio cadangan gagal diputar."));
+  }
+  return audio;
+}
+function speak(text, button = null) {
+  const cleanText = String(text || "").replace(/\s+/g, " ").trim();
+  if (!cleanText) return;
+  stopAllAudio();
+  const token = activeSpeechToken;
+  setSpeakButtonPlaying(button, true);
+
+  if (!("speechSynthesis" in window)) {
+    playFallbackAudio(cleanText, button, token);
+    return;
+  }
+
+  let voices = refreshCachedVoices();
+  const utterance = new SpeechSynthesisUtterance(cleanText.slice(0, 220));
   utterance.lang = "ja-JP"; utterance.rate = 0.88;
-  const voice = window.speechSynthesis.getVoices().find(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
-  if (voice) utterance.voice = voice;
-  window.speechSynthesis.speak(utterance);
+  const japaneseVoice = voices.find(v => v) || cachedJapaneseVoices[0];
+  if (japaneseVoice) utterance.voice = japaneseVoice;
+
+  let started = false;
+  let fallbackStarted = false;
+  const startFallbackOnce = errorMessage => {
+    if (fallbackStarted) return; fallbackStarted = true;
+    if (token !== activeSpeechToken) return;
+    setSpeakButtonPlaying(button, false);
+    playFallbackAudio(cleanText, button, token);
+    if (errorMessage) console.warn(errorMessage);
+  };
+  utterance.onstart = () => { started = true; };
+  utterance.onend = () => { if (token === activeSpeechToken) setSpeakButtonPlaying(button, false); };
+  utterance.onerror = event => {
+    const errorName = event && event.error ? ` (${event.error})` : "";
+    startFallbackOnce(`Web Speech gagal${errorName}; memakai audio cadangan.`);
+  };
+
+  try {
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+    // Sebagian browser tidak memicu error walau suara tidak keluar; bila belum mulai, pakai cadangan.
+    setTimeout(() => {
+      if (!started && token === activeSpeechToken) startFallbackOnce("Web Speech tidak mulai; memakai audio cadangan.");
+    }, 1600);
+  } catch {
+    startFallbackOnce("Web Speech tidak tersedia aktif; memakai audio cadangan.");
+  }
 }
 function speakButton(text, label = "🔊") {
   const btn = document.createElement("button"); btn.type = "button"; btn.className = "speak-btn"; btn.textContent = label;
-  btn.setAttribute("aria-label", `Dengarkan: ${text}`); btn.addEventListener("click", () => speak(text)); return btn;
+  btn.dataset.originalLabel = label;
+  btn.setAttribute("aria-label", `Dengarkan: ${text}`); btn.addEventListener("click", () => speak(text, btn)); return btn;
 }
 function shuffle(array) { return [...array].sort(() => Math.random() - 0.5); }
 function sample(array, count) { return shuffle(array).slice(0, count); }
@@ -136,15 +240,15 @@ function selectLesson(moduleId, scroll) {
   const examples = $(".example-list", panel);
   module.examples.forEach(([jp, romaji, meaning]) => {
     const card = document.createElement("div"); card.className = "example-card";
+    card.innerHTML = `<div class="example-jp jp">${jp}</div><div class="romaji">${romaji}</div><div class="meaning">${meaning}</div>`;
     card.appendChild(speakButton(jp));
-    card.innerHTML += `<div class="example-jp jp">${jp}</div><div class="romaji">${romaji}</div><div class="meaning">${meaning}</div>`;
     examples.appendChild(card);
   });
   const vocab = $(".vocab-list", panel);
   module.vocab.forEach(([jp, reading, romaji, meaning]) => {
     const card = document.createElement("div"); card.className = "vocab-card";
+    card.innerHTML = `<strong class="jp">${jp}</strong> <span class="romaji">${romaji}</span><div class="meaning">${meaning} • bacaan: ${reading}</div>`;
     card.appendChild(speakButton(reading));
-    card.innerHTML += `<strong class="jp">${jp}</strong> <span class="romaji">${romaji}</span><div class="meaning">${meaning} • bacaan: ${reading}</div>`;
     vocab.appendChild(card);
   });
   $("#completeLesson").addEventListener("click", () => {
@@ -200,7 +304,7 @@ function initKana() {
   $("#flashcard").addEventListener("click", () => { cardFlipped = !cardFlipped; renderKanaCard(); });
   $("#prevKana").addEventListener("click", () => { kanaIndex = (kanaIndex - 1 + KANA.length) % KANA.length; cardFlipped = false; renderKanaCard(); });
   $("#nextKana").addEventListener("click", () => { kanaIndex = (kanaIndex + 1) % KANA.length; cardFlipped = false; renderKanaCard(); });
-  $("#speakKana").addEventListener("click", () => speak(currentKana()[kanaScript]));
+  $("#speakKana").addEventListener("click", event => speak(currentKana()[kanaScript], event.currentTarget));
   $("#markKana").addEventListener("click", () => {
     const item = currentKana(); const kana = item[kanaScript]; const key = `${kanaScript}:${item.romaji}:${kana}`;
     if (!progress.knownKana.includes(key)) { progress.knownKana.push(key); recordStudy(2); }
@@ -219,10 +323,10 @@ function renderKanji() {
   if (!results.length) { grid.innerHTML = `<div class="empty-state">Tidak ada kanji yang cocok. Coba kata kunci lain.</div>`; return; }
   results.forEach(k => {
     const card = document.createElement("article"); card.className = "kanji-card";
-    card.appendChild(speakButton(k.char));
-    card.innerHTML += `<div class="kanji-char jp">${k.char}</div><span class="badge">${levelById(k.level).code}</span>
+    card.innerHTML = `<div class="kanji-char jp">${k.char}</div><span class="badge">${levelById(k.level).code}</span>
       <dl><dt>Onyomi</dt><dd>${k.onyomi}</dd><dt>Kunyomi</dt><dd>${k.kunyomi}</dd><dt>Arti</dt><dd>${k.meaning}</dd></dl>
       <p class="meaning">${k.example}</p>`;
+    card.appendChild(speakButton(k.char));
     grid.appendChild(card);
   });
 }
@@ -240,8 +344,8 @@ function renderSearch(query = "") {
   const vocabResults = allVocab().filter(v => `${v.jp} ${v.reading} ${v.romaji} ${v.meaning}`.toLowerCase().includes(q)).slice(0, 12);
   const kanjiResults = KANJI.filter(k => `${k.char} ${k.onyomi} ${k.kunyomi} ${k.meaning} ${k.example}`.toLowerCase().includes(q)).slice(0, 8);
   const grammarResults = GRAMMAR_INDEX.filter(g => `${g.pattern} ${g.meaning} ${g.example}`.toLowerCase().includes(q)).slice(0, 8);
-  vocabResults.forEach(v => { const el = document.createElement("div"); el.className = "result-card"; el.appendChild(speakButton(v.reading)); el.innerHTML += `<span class="badge">${v.level}</span><h3 class="jp">${v.jp}</h3><p><span class="romaji">${v.romaji}</span><br><span class="meaning">${v.meaning} • dari: ${v.source}</span></p>`; box.appendChild(el); });
-  kanjiResults.forEach(k => { const el = document.createElement("div"); el.className = "result-card"; el.appendChild(speakButton(k.char)); el.innerHTML += `<span class="badge">Kanji ${levelById(k.level).code}</span><h3 class="jp">${k.char}</h3><p class="meaning">${k.meaning}<br>On: ${k.onyomi} • Kun: ${k.kunyomi}<br>${k.example}</p>`; box.appendChild(el); });
+  vocabResults.forEach(v => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">${v.level}</span><h3 class="jp">${v.jp}</h3><p><span class="romaji">${v.romaji}</span><br><span class="meaning">${v.meaning} • dari: ${v.source}</span></p>`; el.appendChild(speakButton(v.reading)); box.appendChild(el); });
+  kanjiResults.forEach(k => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">Kanji ${levelById(k.level).code}</span><h3 class="jp">${k.char}</h3><p class="meaning">${k.meaning}<br>On: ${k.onyomi} • Kun: ${k.kunyomi}<br>${k.example}</p>`; el.appendChild(speakButton(k.char)); box.appendChild(el); });
   grammarResults.forEach(g => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">Grammar ${g.level.toUpperCase()}</span><h3 class="jp">${g.pattern}</h3><p class="meaning">${g.meaning}<br>${g.example}</p>`; box.appendChild(el); });
   if (!vocabResults.length && !kanjiResults.length && !grammarResults.length) box.innerHTML = `<div class="empty-state">Tidak ditemukan. Coba romaji (taberu), arti Indonesia (makan), atau pola (はず).</div>`;
 }
@@ -325,7 +429,7 @@ function init() {
   initKana(); initKanji(); renderSearch(); renderBestScores();
   $("#globalSearch").addEventListener("input", e => renderSearch(e.target.value));
   $("#startQuiz").addEventListener("click", startQuiz);
-  $("#speakHero").addEventListener("click", () => speak("日本語を勉強しましょう。"));
+  $("#speakHero").addEventListener("click", event => speak("日本語を勉強しましょう。", event.currentTarget));
   $("#startPrep").addEventListener("click", event => {
     event.preventDefault();
     const firstPrep = allModules().find(module => module.levelId === "prep") || nextRecommended();
