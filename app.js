@@ -79,18 +79,21 @@ function renderDashboard() {
 }
 function renderLevels() {
   const grid = $("#levelGrid"); grid.innerHTML = "";
+  const current = nextRecommended();
   LEVELS.forEach((level, index) => {
     const percent = completionForLevel(level);
     const unlocked = isLevelUnlocked(index);
+    const isCurrent = current.levelId === level.id && percent < 100;
     const card = document.createElement("article");
-    card.className = `level-card ${unlocked ? "" : "locked"}`; card.style.setProperty("--level-color", level.color);
+    card.className = `level-card ${unlocked ? "" : "locked"} ${isCurrent ? "current" : ""}`; card.style.setProperty("--level-color", level.color);
     card.innerHTML = `
+      <div class="level-topline"><span class="step-pill">Langkah ${index + 1}</span>${isCurrent ? `<span class="current-pill">👉 Kamu di sini</span>` : ""}</div>
       <div class="level-icon" aria-hidden="true">${level.icon}</div>
       <div class="level-meta"><span>${level.code}</span><span>${percent}% selesai</span></div>
       <h3>${level.name}</h3><p>${level.description}</p>
       <div class="mini-bar" aria-hidden="true"><span style="width:${percent}%"></span></div>
-      <p style="margin-top:12px"><span class="badge ${percent === 100 ? "done" : unlocked ? "" : "lock"}">${percent === 100 ? "Selesai" : unlocked ? "Terbuka" : "Terkunci — selesaikan 60% level sebelumnya"}</span></p>
-      <button class="button ghost small" type="button">Lihat ${level.modules.length} modul</button>`;
+      <p class="level-status"><span class="badge ${percent === 100 ? "done" : unlocked ? "" : "lock"}">${percent === 100 ? "Selesai" : unlocked ? "Siap dipelajari" : "Terbuka setelah tingkat sebelumnya cukup selesai"}</span></p>
+      <button class="button ghost small" type="button">Lihat ${level.modules.length} pelajaran di tingkat ini</button>`;
     card.querySelector("button").addEventListener("click", () => {
       $("#lessonLevelFilter").value = level.id; renderLessonList(); document.querySelector("#lessons").scrollIntoView({ behavior: "smooth" });
     });
@@ -309,6 +312,12 @@ function init() {
   $("#globalSearch").addEventListener("input", e => renderSearch(e.target.value));
   $("#startQuiz").addEventListener("click", startQuiz);
   $("#speakHero").addEventListener("click", () => speak("日本語を勉強しましょう。"));
+  $("#startPrep").addEventListener("click", event => {
+    event.preventDefault();
+    const firstPrep = allModules().find(module => module.levelId === "prep") || nextRecommended();
+    $("#lessonLevelFilter").value = "prep";
+    selectLesson(firstPrep.id, true);
+  });
   $("#resetProgress").addEventListener("click", () => {
     if (confirm("Reset semua progres lokal di browser ini?")) { progress = defaultProgress(); saveProgress(); location.reload(); }
   });
