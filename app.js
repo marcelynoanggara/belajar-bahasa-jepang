@@ -351,63 +351,361 @@ function renderSearch(query = "") {
 }
 
 /* ===== Quiz ===== */
+const QUIZ_CONFIG_KEY = "nihonGoMasterQuizConfigV1";
+const QUIZ_TOPIC_LABELS = { kana: "Kana", vocab: "Kosakata", kanji: "Kanji", grammar: "Grammar", mixed: "Campuran" };
 let quiz = null;
-function makeQuestion(mode) {
-  if (mode === "kana") {
-    const item = KANA[Math.floor(Math.random() * KANA.length)]; const script = Math.random() > 0.5 ? "hiragana" : "katakana";
-    const wrong = sample(KANA.filter(k => k.romaji !== item.romaji), 3).map(k => k.romaji);
-    return { prompt: `Apa romaji untuk ${item[script]} (${script})?`, display: item[script], answer: item.romaji, options: shuffle([item.romaji, ...wrong]) };
-  }
-  if (mode === "vocab") {
-    const vocab = allVocab(); const item = vocab[Math.floor(Math.random() * vocab.length)];
-    const wrong = sample(vocab.filter(v => v.meaning !== item.meaning), 3).map(v => v.meaning);
-    return { prompt: `Apa arti kata ini?`, display: `${item.jp} (${item.romaji})`, answer: item.meaning, options: shuffle([item.meaning, ...wrong]), speakText: item.reading };
-  }
-  if (mode === "kanji") {
-    const item = KANJI[Math.floor(Math.random() * KANJI.length)];
-    const wrong = sample(KANJI.filter(k => k.meaning !== item.meaning), 3).map(k => k.meaning);
-    return { prompt: `Apa arti kanji ini?`, display: item.char, answer: item.meaning, options: shuffle([item.meaning, ...wrong]), speakText: item.char };
-  }
-  const item = GRAMMAR_INDEX[Math.floor(Math.random() * GRAMMAR_INDEX.length)];
-  const wrong = sample(GRAMMAR_INDEX.filter(g => g.meaning !== item.meaning), 3).map(g => g.meaning);
-  return { prompt: `Apa fungsi pola grammar ini?`, display: item.pattern, answer: item.meaning, options: shuffle([item.meaning, ...wrong]) };
+
+function defaultQuizConfig() {
+  return { topic: "kana", count: 10, level: "all", script: "mixed", type: "mc", showRomaji: true, shuffleOptions: true };
 }
+function loadQuizConfig() {
+  try { return { ...defaultQuizConfig(), ...(JSON.parse(localStorage.getItem(QUIZ_CONFIG_KEY)) || {}) }; }
+  catch { return defaultQuizConfig(); }
+}
+let quizConfig = loadQuizConfig();
+function saveQuizConfig() { try { localStorage.setItem(QUIZ_CONFIG_KEY, JSON.stringify(quizConfig)); } catch { /* abaikan */ } }
+function clampQuizCount(value) {
+  const n = parseInt(value, 10);
+  if (Number.isNaN(n)) return 10;
+  return Math.min(30, Math.max(3, n));
+}
+
+/* --- Bank soal per topik/level --- */
+function quizVocabPool(level) {
+  return allModules().flatMap(m => m.vocab.map(v => ({ jp: v[0], reading: v[1], romaji: v[2], meaning: v[3], levelId: m.levelId, levelCode: m.levelCode, source: m.title })))
+    .filter(v => level === "all" || v.levelId === level);
+}
+function quizKanjiPool(level) { return KANJI.filter(k => level === "all" || k.level === level); }
+function quizGrammarPool(level) { return GRAMMAR_INDEX.filter(g => level === "all" || g.level === level); }
+function quizTopicPoolSize(topic, cfg) {
+  if (topic === "kana") return KANA.length;
+  if (topic === "vocab") return quizVocabPool(cfg.level).length;
+  if (topic === "kanji") return quizKanjiPool(cfg.level).length;
+  if (topic === "grammar") return quizGrammarPool(cfg.level).length;
+  return ["kana", "vocab", "kanji", "grammar"].reduce((sum, t) => sum + quizTopicPoolSize(t, cfg), 0);
+}
+
+/* --- Normalisasi jawaban ketik --- */
+function normalizeTypedAnswer(value) {
+  return String(value || "").toLowerCase().trim()
+    .replace(/[.,;:!?'"“”‘’()\[\]{}<>〜~\-_\/\\|]/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+function typedAnswerMatches(input, accepted) {
+  const norm = normalizeTypedAnswer(input);
+  if (!norm) return false;
+  const compact = norm.replace(/\s/g, "");
+  return (accepted || []).some(raw => {
+    const a = normalizeTypedAnswer(raw);
+    if (!a) return false;
+    if (a === norm || a.replace(/\s/g, "") === compact) return true;
+    // Kelonggaran wajar: jawaban benar berupa frasa panjang, pengguna mengetik bagian utamanya.
+    return a.length >= 12 && norm.length >= 6 && a.includes(norm);
+  });
+}
+function pickQuestionType(cfg) {
+  if (cfg.type !== "mixed") return cfg.type;
+  return sample(["mc", "type", "listening"], 1)[0];
+}
+
+/* --- Pembuat soal --- */
+function buildQuizQuestion(topic, cfg) {
+  const qType = pickQuestionType(cfg);
+  if (topic === "kana") {
+    const item = sample(KANA, 1)[0];
+    const script = cfg.script === "mixed" ? sample(["hiragana", "katakana"], 1)[0] : cfg.script;
+    const char = item[script];
+    const scriptLabel = script === "hiragana" ? "Hiragana" : "Katakana";
+    const wrong = sample(KANA.filter(k => k.romaji !== item.romaji), 3).map(k => k.romaji);
+    return {
+      topic, type: qType,
+      prompt: `Apa romaji untuk ${scriptLabel.toLowerCase()} ini?`,
+      display: char, displayMeta: scriptLabel, speakText: char,
+      answer: item.romaji, accepted: [item.romaji],
+      options: cfg.shuffleOptions ? shuffle([item.romaji, ...wrong]) : [item.romaji, ...wrong],
+      explain: `${char} (${scriptLabel.toLowerCase()}) dibaca "${item.romaji}". Contoh kata: ${item.example[0]} (${item.example[1]}) — ${item.example[2]}.`
+    };
+  }
+  if (topic === "vocab") {
+    const pool = quizVocabPool(cfg.level); if (!pool.length) return null;
+    const item = sample(pool, 1)[0];
+    const wrong = sample(pool.filter(v => v.meaning !== item.meaning), 3).map(v => v.meaning);
+    return {
+      topic, type: qType,
+      prompt: "Apa arti kata ini?",
+      display: cfg.showRomaji ? `${item.jp} (${item.romaji})` : item.jp,
+      displayMeta: `${item.levelCode} • dari: ${item.source}`, speakText: item.reading,
+      answer: item.meaning, accepted: [item.meaning, ...item.meaning.split("/")],
+      options: cfg.shuffleOptions ? shuffle([item.meaning, ...wrong]) : [item.meaning, ...wrong],
+      explain: `${item.jp} (${item.romaji}) berarti "${item.meaning}" — dari pelajaran ${item.source} (${item.levelCode}).`
+    };
+  }
+  if (topic === "kanji") {
+    const pool = quizKanjiPool(cfg.level); if (!pool.length) return null;
+    const item = sample(pool, 1)[0];
+    const wrong = sample(pool.filter(k => k.meaning !== item.meaning), 3).map(k => k.meaning);
+    return {
+      topic, type: qType,
+      prompt: "Apa arti kanji ini?",
+      display: item.char,
+      displayMeta: cfg.showRomaji ? `On: ${item.onyomi} • Kun: ${item.kunyomi}` : "",
+      speakText: item.char,
+      answer: item.meaning, accepted: [item.meaning, ...item.meaning.split("/")],
+      options: cfg.shuffleOptions ? shuffle([item.meaning, ...wrong]) : [item.meaning, ...wrong],
+      explain: `${item.char} artinya "${item.meaning}". On: ${item.onyomi} • Kun: ${item.kunyomi}. Contoh: ${item.example}`
+    };
+  }
+  const pool = quizGrammarPool(cfg.level); if (!pool.length) return null;
+  const item = sample(pool, 1)[0];
+  const wrong = sample(pool.filter(g => g.meaning !== item.meaning), 3).map(g => g.meaning);
+  return {
+    topic, type: qType,
+    prompt: "Apa fungsi pola grammar ini?",
+    display: item.pattern,
+    displayMeta: item.level.toUpperCase(),
+    speakText: (item.example || "").split("—")[0].trim() || null,
+    answer: item.meaning, accepted: [item.meaning],
+    options: cfg.shuffleOptions ? shuffle([item.meaning, ...wrong]) : [item.meaning, ...wrong],
+    explain: `Pola ${item.pattern} berarti: ${item.meaning} Contoh: ${item.example}`
+  };
+}
+function generateQuizQuestions(cfg) {
+  const singleTopics = ["kana", "vocab", "kanji", "grammar"];
+  const usableTopics = (cfg.topic === "mixed" ? singleTopics : [cfg.topic]).filter(t => quizTopicPoolSize(t, cfg) > 0);
+  const available = cfg.topic === "mixed" ? quizTopicPoolSize("mixed", cfg) : quizTopicPoolSize(cfg.topic, cfg);
+  const total = Math.min(clampQuizCount(cfg.count), available);
+  const questions = [];
+  let guard = 0;
+  while (questions.length < total && guard < total * 40 + 80) {
+    guard++;
+    const topic = cfg.topic === "mixed" ? sample(usableTopics, 1)[0] : cfg.topic;
+    const q = buildQuizQuestion(topic, cfg);
+    if (q) questions.push(q);
+  }
+  return { questions, available };
+}
+
+/* --- Konfigurasi kuis (form) --- */
+function applyQuizConfigToForm() {
+  $("#quizTopic").value = quizConfig.topic;
+  $("#quizLevel").value = quizConfig.level;
+  $("#quizScript").value = quizConfig.script;
+  $("#quizCount").value = clampQuizCount(quizConfig.count);
+  $("#quizType").value = quizConfig.type;
+  $("#quizShowRomaji").checked = !!quizConfig.showRomaji;
+  $("#quizShuffle").checked = !!quizConfig.shuffleOptions;
+  updateQuizConfigVisibility(); updateQuizPoolNote();
+}
+function syncQuizConfigFromForm() {
+  quizConfig = {
+    topic: $("#quizTopic").value,
+    count: clampQuizCount($("#quizCount").value),
+    level: $("#quizLevel").value,
+    script: $("#quizScript").value,
+    type: $("#quizType").value,
+    showRomaji: $("#quizShowRomaji").checked,
+    shuffleOptions: $("#quizShuffle").checked
+  };
+  $("#quizCount").value = quizConfig.count;
+  saveQuizConfig(); updateQuizConfigVisibility(); updateQuizPoolNote();
+}
+function updateQuizConfigVisibility() {
+  const topic = $("#quizTopic").value;
+  $("#quizLevelWrap").hidden = topic === "kana";
+  $("#quizScriptWrap").hidden = !(topic === "kana" || topic === "mixed");
+}
+function updateQuizPoolNote() {
+  const note = $("#quizPoolNote"); if (!note) return;
+  const cfg = { ...quizConfig, topic: $("#quizTopic").value, level: $("#quizLevel").value, count: clampQuizCount($("#quizCount").value) };
+  const available = quizTopicPoolSize(cfg.topic, cfg);
+  const used = Math.min(cfg.count, available);
+  if (!available) {
+    note.textContent = "Bank soal untuk kombinasi ini masih kosong. Coba ganti topik atau level (mis. N5).";
+  } else if (used < cfg.count) {
+    note.textContent = `Bank soal tersedia ${available} soal, jadi kuis ini memakai ${used} soal. Materi akan terus ditambah.`;
+  } else {
+    note.textContent = `Bank soal tersedia ${available} soal. Kuis memakai ${used} soal acak.`;
+  }
+  $("#startQuiz").disabled = !available;
+}
+function initQuizConfig() {
+  applyQuizConfigToForm();
+  ["quizTopic", "quizLevel", "quizScript", "quizCount", "quizType", "quizShowRomaji", "quizShuffle"]
+    .forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener("change", syncQuizConfigFromForm); });
+}
+
+/* --- Skor terbaik (kompatibel data lama berupa angka /10) --- */
+function normalizeBestScore(entry) {
+  if (entry == null) return null;
+  if (typeof entry === "number") return { score: entry, total: 10, percent: Math.round(entry / 10 * 100) };
+  if (typeof entry === "object" && typeof entry.score === "number") {
+    const total = entry.total || 10;
+    return { score: entry.score, total, percent: entry.percent != null ? entry.percent : Math.round(entry.score / total * 100) };
+  }
+  return null;
+}
+function renderBestScores() {
+  const box = $("#bestScores"); if (!box) return;
+  const parts = Object.keys(QUIZ_TOPIC_LABELS).map(key => {
+    const best = normalizeBestScore(progress.bestScores[key]);
+    return best ? `${QUIZ_TOPIC_LABELS[key]}: ${best.score}/${best.total} (${best.percent}%)` : null;
+  }).filter(Boolean);
+  box.innerHTML = `<strong>Skor terbaik</strong><br>` + (parts.length ? parts.join(" • ") : "Belum ada skor. Ikuti kuis pertamamu!");
+}
+
+/* --- Jalannya kuis --- */
 function startQuiz() {
-  const mode = $("#quizMode").value;
-  quiz = { mode, index: 0, score: 0, questions: Array.from({ length: 10 }, () => makeQuestion(mode)), answered: false };
-  progress.quizSessions += 1; saveProgress(); renderQuizQuestion();
+  syncQuizConfigFromForm();
+  const { questions, available } = generateQuizQuestions(quizConfig);
+  const panel = $("#quizPanel");
+  if (!questions.length) {
+    panel.innerHTML = `<div class="empty-state">Bank soal untuk pengaturan ini masih kosong. Coba ganti topik atau level (mis. N5), lalu mulai lagi.</div>`;
+    return;
+  }
+  quiz = {
+    config: { ...quizConfig }, index: 0, score: 0, questions, results: [],
+    answered: false,
+    note: questions.length < clampQuizCount(quizConfig.count) ? `Bank soal tersedia ${available}, jadi kuis ini berisi ${questions.length} soal.` : ""
+  };
+  progress.quizSessions += 1; saveProgress();
+  renderQuizQuestion();
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function renderQuizDots() {
+  return quiz.questions.map((_, i) => {
+    const res = quiz.results[i];
+    const cls = res ? (res.correct ? "dot-correct" : "dot-wrong") : (i === quiz.index ? "dot-current" : "");
+    return `<span class="quiz-dot ${cls}"></span>`;
+  }).join("");
 }
 function renderQuizQuestion() {
   const panel = $("#quizPanel"); const q = quiz.questions[quiz.index]; quiz.answered = false;
-  panel.innerHTML = `<p class="eyebrow">Soal ${quiz.index + 1} / ${quiz.questions.length} • Skor ${quiz.score}</p><h3 class="quiz-question">${q.prompt}</h3><p class="example-jp jp">${q.display}</p><div class="quiz-options"></div><p id="quizFeedback" class="meaning"></p>`;
-  if (q.speakText || quiz.mode === "kana") panel.querySelector("h3").insertAdjacentElement("afterend", speakButton(q.speakText || q.display, "🔊 Dengar soal"));
-  const options = $(".quiz-options", panel);
-  q.options.forEach(option => {
-    const btn = document.createElement("button"); btn.type = "button"; btn.className = "quiz-option"; btn.textContent = option;
-    btn.addEventListener("click", () => answerQuiz(btn, option)); options.appendChild(btn);
-  });
+  panel.innerHTML = `
+    <p class="eyebrow">Soal ${quiz.index + 1} / ${quiz.questions.length} • Skor ${quiz.score} • ${QUIZ_TOPIC_LABELS[q.topic]}</p>
+    <div class="quiz-dots" role="img" aria-label="Kemajuan jawaban kuis">${renderQuizDots()}</div>
+    ${quiz.note ? `<p class="quiz-note">${quiz.note}</p>` : ""}
+    <h3 class="quiz-question">${q.prompt}</h3>
+    <div class="quiz-display"></div>
+    <div class="quiz-answer-zone"></div>
+    <div id="quizFeedback" class="quiz-feedback" aria-live="polite"></div>`;
+  const display = $(".quiz-display", panel);
+  if (q.type === "listening") {
+    const wrap = document.createElement("div"); wrap.className = "listening-box";
+    wrap.appendChild(speakButton(q.speakText, "🔊 Dengarkan soal"));
+    const hiddenText = document.createElement("p"); hiddenText.className = "listening-hidden jp"; hiddenText.id = "listeningHiddenText"; hiddenText.textContent = "• • •";
+    hiddenText.setAttribute("aria-label", "Teks soal disembunyikan untuk latihan mendengar");
+    const reveal = document.createElement("button"); reveal.type = "button"; reveal.className = "text-button small"; reveal.textContent = "Tampilkan teks";
+    reveal.addEventListener("click", () => { hiddenText.textContent = q.display; reveal.hidden = true; });
+    wrap.appendChild(hiddenText); wrap.appendChild(reveal);
+    display.appendChild(wrap);
+  } else {
+    display.innerHTML = `<p class="example-jp jp">${q.display}</p>${q.displayMeta ? `<p class="muted">${q.displayMeta}</p>` : ""}`;
+    if (q.speakText) display.appendChild(speakButton(q.speakText, "🔊 Dengar"));
+  }
+  const zone = $(".quiz-answer-zone", panel);
+  if (q.type === "type") {
+    zone.innerHTML = `
+      <form class="type-form" id="quizTypeForm">
+        <label class="field-label" for="quizTypeInput">Jawaban kamu</label>
+        <input id="quizTypeInput" class="search-input answer-input" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Ketik jawaban di sini…">
+        <button class="button primary wide" type="submit">Periksa jawaban</button>
+      </form>`;
+    $("#quizTypeForm", zone).addEventListener("submit", event => {
+      event.preventDefault();
+      if (quiz.answered) return;
+      const input = $("#quizTypeInput", zone);
+      const value = input.value;
+      const correct = typedAnswerMatches(value, q.accepted && q.accepted.length ? q.accepted : [q.answer]);
+      input.classList.add(correct ? "answer-correct" : "answer-wrong");
+      input.disabled = true;
+      recordQuizAnswer(value.trim() || "(kosong)", correct);
+    });
+    $("#quizTypeInput", zone).focus();
+  } else {
+    const options = document.createElement("div"); options.className = "quiz-options";
+    q.options.forEach(option => {
+      const btn = document.createElement("button"); btn.type = "button"; btn.className = "quiz-option"; btn.textContent = option; btn.dataset.value = option;
+      btn.addEventListener("click", () => answerQuizChoice(btn, option));
+      options.appendChild(btn);
+    });
+    zone.appendChild(options);
+  }
 }
-function answerQuiz(button, option) {
-  if (quiz.answered) return; quiz.answered = true;
-  const q = quiz.questions[quiz.index]; const correct = option === q.answer;
+function answerQuizChoice(button, option) {
+  if (quiz.answered) return;
+  const q = quiz.questions[quiz.index];
+  const correct = option === q.answer;
+  $$(".quiz-option").forEach(btn => {
+    if (btn.dataset.value === q.answer) btn.classList.add("correct");
+    else if (btn === button && !correct) btn.classList.add("wrong");
+    else btn.classList.add("dimmed");
+    btn.disabled = true;
+  });
+  recordQuizAnswer(option, correct);
+}
+function revealListeningText() {
+  const q = quiz.questions[quiz.index];
+  if (q.type !== "listening") return;
+  const hiddenText = $("#listeningHiddenText");
+  if (hiddenText) hiddenText.textContent = q.display;
+  $$(".listening-box .text-button").forEach(btn => { btn.hidden = true; });
+}
+function recordQuizAnswer(userAnswer, correct) {
+  quiz.answered = true;
+  const q = quiz.questions[quiz.index];
+  quiz.results[quiz.index] = { question: q, userAnswer, correct };
   if (correct) { quiz.score += 1; recordStudy(5); }
-  $$(".quiz-option").forEach(btn => { if (btn.textContent === q.answer) btn.classList.add("correct"); if (btn === button && !correct) btn.classList.add("wrong"); btn.disabled = true; });
+  revealListeningText();
+  const dots = $(".quiz-dots"); if (dots) dots.innerHTML = renderQuizDots();
   const feedback = $("#quizFeedback");
-  feedback.innerHTML = correct ? `<span class="quiz-score">Benar!</span> +5 XP` : `Belum tepat. Jawaban benar: <strong>${q.answer}</strong>`;
-  const next = document.createElement("button"); next.className = "button primary wide"; next.type = "button"; next.textContent = quiz.index === quiz.questions.length - 1 ? "Lihat hasil" : "Soal berikutnya";
+  feedback.innerHTML = `
+    <p>${correct ? `<span class="quiz-score">✓ Benar!</span> +5 XP` : `<span class="quiz-wrong-text">✗ Belum tepat.</span> Jawaban benar: <strong>${q.answer}</strong>`}</p>
+    ${q.explain ? `<p class="quiz-explain">${q.explain}</p>` : ""}`;
+  const next = document.createElement("button"); next.className = "button primary wide"; next.type = "button";
+  next.textContent = quiz.index === quiz.questions.length - 1 ? "Lihat hasil" : "Soal berikutnya →";
   next.addEventListener("click", () => { quiz.index += 1; if (quiz.index >= quiz.questions.length) finishQuiz(); else renderQuizQuestion(); });
-  feedback.insertAdjacentElement("afterend", next);
+  feedback.appendChild(next);
+  next.focus();
 }
 function finishQuiz() {
-  const mode = quiz.mode; const previousBest = progress.bestScores[mode] || 0;
-  progress.bestScores[mode] = Math.max(previousBest, quiz.score); saveProgress(); renderBestScores(); renderDashboard();
-  $("#quizPanel").innerHTML = `<p class="eyebrow">Hasil kuis</p><h3 class="quiz-question">Skor kamu: ${quiz.score} / ${quiz.questions.length}</h3><p class="meaning">Skor terbaik mode ${mode}: ${progress.bestScores[mode]} / 10. XP dari jawaban benar sudah ditambahkan.</p><button class="button primary wide" id="restartQuiz" type="button">Main lagi</button>`;
+  const total = quiz.questions.length;
+  const percent = total ? Math.round(quiz.score / total * 100) : 0;
+  const key = quiz.config.topic;
+  const previousBest = normalizeBestScore(progress.bestScores[key]);
+  if (!previousBest || percent > previousBest.percent) {
+    progress.bestScores[key] = { score: quiz.score, total, percent };
+  }
+  saveProgress(); renderBestScores(); renderDashboard();
+  const message = percent >= 90 ? "Luar biasa! Kamu hampir menguasai materi ini. 🎉"
+    : percent >= 70 ? "Bagus sekali! Tinggal poles sedikit lagi."
+    : percent >= 50 ? "Lumayan! Lebih dari separuh benar — teruskan."
+    : "Tidak apa-apa, ini bagian dari belajar. Coba baca lagi review di bawah, lalu ulangi ya.";
+  const reviewCards = quiz.results.map((res, i) => {
+    const q = res.question;
+    return `<article class="review-card ${res.correct ? "is-correct" : "is-wrong"}">
+      <p class="review-head"><strong>Soal ${i + 1}</strong> <span class="badge">${QUIZ_TOPIC_LABELS[q.topic]}${q.type === "listening" ? " • Listening" : q.type === "type" ? " • Ketik" : ""}</span> <span class="${res.correct ? "ans-correct" : "ans-wrong"}">${res.correct ? "✓ Benar" : "✗ Salah"}</span></p>
+      <p class="review-question">${q.prompt}<br><strong class="jp">${q.display}</strong></p>
+      <p>Jawaban kamu: <span class="${res.correct ? "ans-correct" : "ans-wrong"}">${res.userAnswer}</span><br>Jawaban benar: <span class="ans-correct">${q.answer}</span></p>
+      ${q.explain ? `<p class="meaning">${q.explain}</p>` : ""}
+    </article>`;
+  }).join("");
+  $("#quizPanel").innerHTML = `
+    <p class="eyebrow">Hasil kuis</p>
+    <h3 class="quiz-question">Skor kamu: ${quiz.score} / ${total} (${percent}%)</h3>
+    <p class="meaning">${message} XP dari jawaban benar sudah ditambahkan.</p>
+    <div class="row-actions">
+      <button class="button primary" id="restartQuiz" type="button">↻ Main lagi (pengaturan sama)</button>
+      <button class="button ghost" id="editQuizConfig" type="button">⚙ Ubah pengaturan</button>
+    </div>
+    <h4 class="review-title">Review jawaban</h4>
+    <div class="review-list">${reviewCards}</div>`;
   $("#restartQuiz").addEventListener("click", startQuiz);
+  $("#editQuizConfig").addEventListener("click", () => {
+    document.querySelector("#quiz").scrollIntoView({ behavior: "smooth" });
+    const topicSelect = $("#quizTopic"); if (topicSelect) topicSelect.focus({ preventScroll: true });
+  });
 }
-function renderBestScores() {
-  const labels = { kana: "Kana", vocab: "Kosakata", kanji: "Kanji", grammar: "Grammar" };
-  $("#bestScores").innerHTML = `<strong>Skor terbaik</strong><br>` + Object.keys(labels).map(k => `${labels[k]}: ${progress.bestScores[k] || 0}/10`).join(" • ");
-}
+
 
 /* ===== Mobile nav ===== */
 function initMobileNav() {
@@ -428,6 +726,7 @@ function init() {
   renderDashboard(); renderLevels(); initLessonFilter(); renderLessonList(); selectLesson(nextRecommended().id, false);
   initKana(); initKanji(); renderSearch(); renderBestScores();
   $("#globalSearch").addEventListener("input", e => renderSearch(e.target.value));
+  initQuizConfig();
   $("#startQuiz").addEventListener("click", startQuiz);
   $("#speakHero").addEventListener("click", event => speak("日本語を勉強しましょう。", event.currentTarget));
   $("#startPrep").addEventListener("click", event => {

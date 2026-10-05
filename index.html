@@ -152,16 +152,54 @@
 
     <section id="quiz" class="section-shell quiz-layout">
       <div>
-        <p class="eyebrow">KUIS</p><h2>Uji pemahamanmu</h2>
-        <p>Sepuluh soal acak. Jawaban benar memberi XP dan skor terbaik tersimpan lokal.</p>
-        <label class="field-label" for="quizMode">Mode kuis</label>
-        <select id="quizMode" class="select">
-          <option value="kana">Kana</option><option value="vocab">Kosakata</option><option value="kanji">Kanji</option><option value="grammar">Grammar</option>
-        </select>
-        <button class="button primary wide" id="startQuiz" type="button">Mulai kuis baru</button>
+        <p class="eyebrow">KUIS</p><h2>Atur kuismu sendiri</h2>
+        <p>Pilih topik, jumlah soal, dan bentuk soalnya. Jawaban benar memberi XP dan skor terbaik tersimpan lokal di perangkat ini.</p>
+        <form id="quizConfigForm" class="quiz-config">
+          <label class="field-label" for="quizTopic">Topik</label>
+          <select id="quizTopic" class="select">
+            <option value="kana">Kana</option>
+            <option value="vocab">Kosakata</option>
+            <option value="kanji">Kanji</option>
+            <option value="grammar">Grammar</option>
+            <option value="mixed">Campuran semua topik</option>
+          </select>
+          <div id="quizLevelWrap">
+            <label class="field-label" for="quizLevel">Level</label>
+            <select id="quizLevel" class="select">
+              <option value="all">Semua level</option>
+              <option value="prep">Persiapan</option>
+              <option value="n5">N5</option>
+              <option value="n4">N4</option>
+              <option value="n3">N3</option>
+              <option value="n2">N2</option>
+              <option value="n1">N1</option>
+            </select>
+          </div>
+          <div id="quizScriptWrap" hidden>
+            <label class="field-label" for="quizScript">Aksara kana</label>
+            <select id="quizScript" class="select">
+              <option value="hiragana">Hiragana</option>
+              <option value="katakana">Katakana</option>
+              <option value="mixed">Acak (Hiragana + Katakana)</option>
+            </select>
+          </div>
+          <label class="field-label" for="quizCount">Jumlah soal (3–30)</label>
+          <input id="quizCount" class="select" type="number" min="3" max="30" step="1" value="10" inputmode="numeric">
+          <label class="field-label" for="quizType">Bentuk soal</label>
+          <select id="quizType" class="select">
+            <option value="mc">Pilihan ganda</option>
+            <option value="type">Ketik jawaban</option>
+            <option value="listening">Listening (dengar lalu pilih)</option>
+            <option value="mixed">Campuran</option>
+          </select>
+          <label class="check-row" for="quizShowRomaji"><input id="quizShowRomaji" type="checkbox" checked><span>Tampilkan romaji/bacaan pendamping</span></label>
+          <label class="check-row" for="quizShuffle"><input id="quizShuffle" type="checkbox" checked><span>Acak urutan pilihan jawaban</span></label>
+        </form>
+        <button class="button primary wide" id="startQuiz" type="button">Mulai kuis</button>
+        <p id="quizPoolNote" class="quiz-pool-note" aria-live="polite"></p>
         <div class="best-score" id="bestScores"></div>
       </div>
-      <article class="quiz-panel" id="quizPanel"><div class="empty-state">Pilih mode lalu mulai kuis. Soal dibuat dari bank materi aplikasi.</div></article>
+      <article class="quiz-panel" id="quizPanel"><div class="empty-state">Atur kuis di samping, lalu klik "Mulai kuis". Soal dibuat acak dari bank materi aplikasi.</div></article>
     </section>
     <section id="about" class="section-shell about-section" aria-labelledby="about-title">
       <div class="section-heading">
