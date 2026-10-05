@@ -305,8 +305,22 @@ function renderBestScores() {
   $("#bestScores").innerHTML = `<strong>Skor terbaik</strong><br>` + Object.keys(labels).map(k => `${labels[k]}: ${progress.bestScores[k] || 0}/10`).join(" • ");
 }
 
+/* ===== Mobile nav ===== */
+function initMobileNav() {
+  const toggle = $("#menuToggle"); const menu = $("#mobileMenu"); if (!toggle || !menu) return;
+  const close = () => { menu.hidden = true; toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-label", "Buka menu"); toggle.classList.remove("open"); };
+  const open = () => { menu.hidden = false; toggle.setAttribute("aria-expanded", "true"); toggle.setAttribute("aria-label", "Tutup menu"); toggle.classList.add("open"); };
+  toggle.addEventListener("click", () => (menu.hidden ? open() : close()));
+  $$("a", menu).forEach(link => link.addEventListener("click", close));
+  document.addEventListener("click", event => {
+    if (!menu.hidden && !menu.contains(event.target) && !toggle.contains(event.target)) close();
+  });
+  document.addEventListener("keydown", event => { if (event.key === "Escape" && !menu.hidden) { close(); toggle.focus(); } });
+}
+
 /* ===== Init ===== */
 function init() {
+  initMobileNav();
   renderDashboard(); renderLevels(); initLessonFilter(); renderLessonList(); selectLesson(nextRecommended().id, false);
   initKana(); initKanji(); renderSearch(); renderBestScores();
   $("#globalSearch").addEventListener("input", e => renderSearch(e.target.value));
