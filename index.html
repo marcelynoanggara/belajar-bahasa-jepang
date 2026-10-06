@@ -94,20 +94,29 @@
       </div>
     </section>
 
-    <section id="quiz" class="section-shell quiz-layout featured-quiz">
-      <div>
-        <p class="eyebrow quiz-eyebrow"><span class="feature-badge">Latihan cepat</span> KUIS</p><h2>Atur kuismu sendiri</h2>
-        <p>Pilih topik, jumlah soal, dan bentuk soalnya. Jawaban benar memberi XP dan skor terbaik tersimpan lokal di perangkat ini.</p>
-        <form id="quizConfigForm" class="quiz-config">
-          <label class="field-label" for="quizTopic">Topik</label>
-          <select id="quizTopic" class="select">
-            <option value="kana">Kana</option>
-            <option value="vocab">Kosakata</option>
-            <option value="kanji">Kanji</option>
-            <option value="grammar">Grammar</option>
-            <option value="mixed">Campuran semua topik</option>
-          </select>
-          <div id="quizLevelWrap">
+    <section id="quiz" class="section-shell featured-quiz">
+      <div class="quiz-header">
+        <div class="quiz-heading">
+          <p class="eyebrow quiz-eyebrow"><span class="feature-badge">Latihan cepat</span> KUIS</p>
+          <h2>Atur kuismu sendiri</h2>
+          <p class="quiz-intro">Pilih topik, jumlah soal, dan bentuk soalnya. Jawaban benar memberi XP dan skor terbaik tersimpan lokal di perangkat ini.</p>
+        </div>
+        <div class="best-score quiz-best" id="bestScores"></div>
+      </div>
+
+      <div class="quiz-config-card">
+        <form id="quizConfigForm" class="quiz-config" aria-label="Pengaturan kuis">
+          <div class="quiz-field quiz-field-topic">
+            <label class="field-label" for="quizTopic">Topik</label>
+            <select id="quizTopic" class="select">
+              <option value="kana">Kana</option>
+              <option value="vocab">Kosakata</option>
+              <option value="kanji">Kanji</option>
+              <option value="grammar">Grammar</option>
+              <option value="mixed">Campuran semua topik</option>
+            </select>
+          </div>
+          <div class="quiz-field" id="quizLevelWrap">
             <label class="field-label" for="quizLevel">Level</label>
             <select id="quizLevel" class="select">
               <option value="all">Semua level</option>
@@ -119,7 +128,7 @@
               <option value="n1">N1</option>
             </select>
           </div>
-          <div id="quizScriptWrap" hidden>
+          <div class="quiz-field" id="quizScriptWrap" hidden>
             <label class="field-label" for="quizScript">Aksara kana</label>
             <select id="quizScript" class="select">
               <option value="hiragana">Hiragana</option>
@@ -127,23 +136,41 @@
               <option value="mixed">Acak (Hiragana + Katakana)</option>
             </select>
           </div>
-          <label class="field-label" for="quizCount">Jumlah soal (3–30)</label>
-          <input id="quizCount" class="select" type="number" min="3" max="30" step="1" value="10" inputmode="numeric">
-          <label class="field-label" for="quizType">Bentuk soal</label>
-          <select id="quizType" class="select">
-            <option value="mc">Pilihan ganda</option>
-            <option value="type">Ketik jawaban</option>
-            <option value="listening">Listening (dengar lalu pilih)</option>
-            <option value="mixed">Campuran</option>
-          </select>
-          <label class="check-row" for="quizShowRomaji"><input id="quizShowRomaji" type="checkbox" checked><span>Tampilkan romaji/bacaan pendamping</span></label>
-          <label class="check-row" for="quizShuffle"><input id="quizShuffle" type="checkbox" checked><span>Acak urutan pilihan jawaban</span></label>
+          <div class="quiz-field quiz-field-count">
+            <label class="field-label" for="quizCount">Jumlah soal (3–30)</label>
+            <input id="quizCount" class="select" type="number" min="3" max="30" step="1" value="10" inputmode="numeric">
+          </div>
+          <div class="quiz-field quiz-field-type">
+            <label class="field-label" for="quizType">Bentuk soal</label>
+            <select id="quizType" class="select">
+              <option value="mc">Pilihan ganda</option>
+              <option value="type">Ketik jawaban</option>
+              <option value="listening">Listening (dengar lalu pilih)</option>
+              <option value="mixed">Campuran</option>
+            </select>
+          </div>
+          <div class="quiz-field quiz-field-options">
+            <span class="field-label" id="quizOptionsLabel">Tampilan &amp; urutan</span>
+            <div class="quiz-toggle-row" role="group" aria-labelledby="quizOptionsLabel">
+              <label class="check-row" for="quizShowRomaji"><input id="quizShowRomaji" type="checkbox" checked><span>Tampilkan romaji/bacaan pendamping</span></label>
+              <label class="check-row" for="quizShuffle"><input id="quizShuffle" type="checkbox" checked><span>Acak urutan pilihan jawaban</span></label>
+            </div>
+          </div>
         </form>
-        <button class="button primary wide" id="startQuiz" type="button">Mulai kuis</button>
-        <p id="quizPoolNote" class="quiz-pool-note" aria-live="polite"></p>
-        <div class="best-score" id="bestScores"></div>
+        <div class="quiz-config-footer">
+          <button class="button primary" id="startQuiz" type="button">Mulai kuis</button>
+          <p id="quizPoolNote" class="quiz-pool-note" aria-live="polite"></p>
+        </div>
       </div>
-      <article class="quiz-panel" id="quizPanel"><div class="empty-state">Atur kuis di samping, lalu klik "Mulai kuis". Soal dibuat acak dari bank materi aplikasi.</div></article>
+
+      <article class="quiz-panel" id="quizPanel">
+        <div class="quiz-idle">
+          <span class="idle-badge">Siap mulai</span>
+          <h3>Pengaturanmu sudah siap</h3>
+          <p id="quizIdleSummary">Ringkasan kuis akan muncul di sini setelah pengaturan dibaca.</p>
+          <p class="quiz-idle-hint">Klik <strong>Mulai kuis</strong> pada panel pengaturan di atas untuk menampilkan soal pertama.</p>
+        </div>
+      </article>
     </section>
     <section id="roadmap" class="section-shell">
       <div class="section-heading"><div><p class="eyebrow">Jalur belajar</p><h2>Ikuti langkahnya satu per satu</h2></div><p>Mulai dari langkah yang terbuka. Setelah sekitar 60% pelajaran pada satu tingkat selesai, tingkat berikutnya akan terbuka. Klik tingkat untuk melihat pelajarannya.</p></div>

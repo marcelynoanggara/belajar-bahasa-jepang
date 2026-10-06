@@ -540,6 +540,7 @@ function renderSearch(query = "") {
 /* ===== Quiz ===== */
 const QUIZ_CONFIG_KEY = "nihonGoMasterQuizConfigV1";
 const QUIZ_TOPIC_LABELS = { kana: "Kana", vocab: "Kosakata", kanji: "Kanji", grammar: "Grammar", mixed: "Campuran" };
+const QUIZ_TYPE_LABELS = { mc: "Pilihan ganda", type: "Ketik jawaban", listening: "Listening", mixed: "Campuran" };
 let quiz = null;
 
 function defaultQuizConfig() {
@@ -676,6 +677,44 @@ function generateQuizQuestions(cfg) {
 }
 
 /* --- Konfigurasi kuis (form) --- */
+/* --- Panel kuis sebelum dimulai --- */
+function quizSelectedOptionText(id) {
+  const el = document.getElementById(id);
+  if (!el || !el.options || el.selectedIndex < 0) return "";
+  return el.options[el.selectedIndex].textContent.trim();
+}
+function renderQuizIdleState() {
+  if (quiz) return;
+  const panel = $("#quizPanel"); if (!panel) return;
+  const cfg = {
+    ...quizConfig,
+    topic: $("#quizTopic") ? $("#quizTopic").value : quizConfig.topic,
+    level: $("#quizLevel") ? $("#quizLevel").value : quizConfig.level,
+    script: $("#quizScript") ? $("#quizScript").value : quizConfig.script,
+    count: clampQuizCount($("#quizCount") ? $("#quizCount").value : quizConfig.count),
+    type: $("#quizType") ? $("#quizType").value : quizConfig.type
+  };
+  const available = quizTopicPoolSize(cfg.topic, cfg);
+  const used = Math.min(cfg.count, available);
+  const scopeLabel = cfg.topic === "kana"
+    ? quizSelectedOptionText("quizScript")
+    : cfg.topic === "mixed"
+      ? `${quizSelectedOptionText("quizLevel")} • ${quizSelectedOptionText("quizScript")}`
+      : quizSelectedOptionText("quizLevel");
+  const summary = available
+    ? `${QUIZ_TOPIC_LABELS[cfg.topic]} • ${scopeLabel} • ${used} dari ${cfg.count} soal diminta • ${QUIZ_TYPE_LABELS[cfg.type]} • ${available} soal tersedia`
+    : `${QUIZ_TOPIC_LABELS[cfg.topic]} • bank soal untuk pilihan ini masih kosong`;
+  panel.innerHTML = `
+    <div class="quiz-idle">
+      <span class="idle-badge">${available ? "Siap mulai" : "Bank soal kosong"}</span>
+      <h3>${available ? "Pengaturanmu sudah siap" : "Pilih kombinasi lain dulu"}</h3>
+      <p class="quiz-idle-summary">${summary}</p>
+      <p class="quiz-idle-hint">${available
+        ? "Gunakan satu tombol <strong>Mulai kuis</strong> pada panel pengaturan di atas untuk menampilkan soal pertama."
+        : "Kembali ke panel pengaturan di atas, lalu ganti topik atau level agar bank soalnya tersedia."}</p>
+    </div>`;
+}
+
 function applyQuizConfigToForm() {
   $("#quizTopic").value = quizConfig.topic;
   $("#quizLevel").value = quizConfig.level;
@@ -697,7 +736,7 @@ function syncQuizConfigFromForm() {
     shuffleOptions: $("#quizShuffle").checked
   };
   $("#quizCount").value = quizConfig.count;
-  saveQuizConfig(); updateQuizConfigVisibility(); updateQuizPoolNote();
+  saveQuizConfig(); updateQuizConfigVisibility(); updateQuizPoolNote(); renderQuizIdleState();
 }
 function updateQuizConfigVisibility() {
   const topic = $("#quizTopic").value;
@@ -720,6 +759,7 @@ function updateQuizPoolNote() {
 }
 function initQuizConfig() {
   applyQuizConfigToForm();
+  renderQuizIdleState();
   ["quizTopic", "quizLevel", "quizScript", "quizCount", "quizType", "quizShowRomaji", "quizShuffle"]
     .forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener("change", syncQuizConfigFromForm); });
 }
