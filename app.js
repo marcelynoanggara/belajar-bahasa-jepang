@@ -206,13 +206,130 @@ function jpStackHTML({ jp, romaji = "", readings = [], meaning = "", meta = "", 
 function exampleStackHTML(example, stackClass = "") {
   const match = String(example || "").match(/^(.*?)[（(]([^（）()]+)[）)]\s*[—–-]\s*(.+)$/);
   if (!match) return `<p class="meaning ${stackClass}">${example || ""}</p>`;
+  // Contoh satu kata majemuk (Kanji（bacaan）): tumpukan tunggal sudah tepat.
   return jpStackHTML({ jp: match[1].trim(), romaji: match[2].trim(), meaning: match[3].trim(), stackClass: `jp-stack-example ${stackClass}` });
+}
+function alignedExampleTextHTML(example, stackClass = "") {
+  // Contoh dengan romaji kalimat (mis. data kosakata): romaji disejajarkan per kata.
+  const match = String(example || "").match(/^(.*?)[（(]([^（）()]+)[）)]\s*[—–-]\s*(.+)$/);
+  if (match) return alignedRomajiHTML(match[1].trim(), match[2].trim(), match[3].trim(), `jp-stack-example ${stackClass}`);
+  const dash = String(example || "").match(/^(.+?)\s*[—–-]\s*(.+)$/);
+  if (!dash) return `<p class="meaning ${stackClass}">${example || ""}</p>`;
+  return jpStackHTML({ jp: dash[1].trim(), meaning: dash[2].trim(), stackClass: `jp-stack-example ${stackClass}` });
 }
 function translatedExampleHTML(example, stackClass = "") {
   const match = String(example || "").match(/^(.+?)\s*[—–-]\s*(.+)$/);
   if (!match) return `<p class="meaning ${stackClass}">${example || ""}</p>`;
   return jpStackHTML({ jp: match[1].trim(), meaning: match[2].trim(), stackClass: `jp-stack-example ${stackClass}` });
 }
+/* Romaji per kata (gaya ruby/furigana): kata Jepang di atas, romaji tepat di bawah kata itu.
+   Penyelarasan token per spasi + partikel/akhiran; bila jumlah tidak cocok -> fallback kalimat utuh. */
+const ALIGN_PARTICLES = ["から","まで","は","が","を","に","へ","で","と","も","の","か"];
+const ALIGN_ENDINGS = ["ませんか","なりません","ません","ました","でしょう","ください","したい","です","ます","たい"];
+function alignParticleAt(s, j){
+  if (j <= 0) return null;
+  const prev = s[j-1];
+  for (const p of ALIGN_PARTICLES){
+    if (!s.startsWith(p, j)) continue;
+    if ((p === "の" || p === "か") && (prev === "ん" || (p === "の" && prev === "こ"))) return null;
+    if ((p === "に" || p === "は") && prev === "ん") return null;
+    if (p === "で"){
+      const rest = s.slice(j);
+      const hasEnding = ALIGN_ENDINGS.some(e => rest.startsWith("で" + e));
+      const next = s[j+1];
+      if (!hasEnding && next && !/[。．.!！?？、,]/.test(next)) return null;
+    }
+    return p;
+  }
+  return null;
+}
+function alignSplitSegment(seg){
+  // pass 1: kata + partikel sebagai token tersendiri
+  const chunks = []; let start = 0;
+  for (let j = 0; j < seg.length; j++){
+    const p = alignParticleAt(seg, j);
+    if (p){ if (j > start) chunks.push(seg.slice(start, j)); chunks.push(p); j += p.length - 1; start = j + 1; }
+  }
+  if (start < seg.length) chunks.push(seg.slice(start));
+  // pass 2: pisahkan akhiran sopan (です/ます/dll) dari potongan terakhir bila perlu
+  const units = [];
+  chunks.forEach(chunk => {
+    if (ALIGN_PARTICLES.includes(chunk)) { units.push(chunk); return; }
+    let rest = chunk; const ends = [];
+    while (true){
+      const e = ALIGN_ENDINGS.find(e => rest.length > e.length && rest.endsWith(e));
+      if (!e) break; ends.unshift(e); rest = rest.slice(0, -e.length);
+    }
+    if (rest) units.push(rest); units.push(...ends);
+  });
+  return units;
+}
+function alignJapaneseUnits(jpText){
+  const units = [];
+  String(jpText || "").trim().split(/\s+/).filter(Boolean).forEach(tok => {
+    tok.split(/(?<=[。．.!！?？])/).filter(Boolean).forEach(seg => {
+      let punct = ""; const pm = seg.match(/([。．.!！?？、,]+)$/);
+      if (pm){ punct = pm[1]; seg = seg.slice(0, seg.length - punct.length); }
+      units.push(...alignSplitSegment(seg));
+      if (punct && units.length) units[units.length - 1] += punct;
+    });
+  });
+  return units;
+}
+function alignRomajiTokens(romajiText){
+  return String(romajiText || "").trim().split(/\s+/).filter(Boolean).map(t => t.replace(/[,;:]+$/, ""));
+}
+/**
+ * Pasangkan romaji per kata dengan kata Jepang.
+ * Kembalikan { aligned:true, pairs:[[jp,romaji]..] } atau { aligned:false } (fallback utuh).
+ */
+function alignRomajiPairs(jpText, romajiText){
+  const jp = String(jpText || "").replace(/\s+/g, " ").trim();
+  const ro = String(romajiText || "").replace(/\s+/g, " ").trim();
+  if (!jp || !ro) return { aligned: false };
+  if (!/\s/.test(jp) && !/[はがをにへでとものかからまで]/.test(jp)) {
+    return { aligned: true, pairs: [[jp, ro]] }; // satu kata/frasa tunggal
+  }
+  let units = alignJapaneseUnits(jp);
+  const romaji = alignRomajiTokens(ro);
+  if (!units.length || !romaji.length) return { aligned: false };
+  // Samakan jumlah secara terbatas: hanya izinkan SELISIH kecil (<=2) agar kalimat
+  // berantakan tidak dipaksakan berpasangan. Penggabungan ekor meniru kelompok akhir
+  // yang memang menyatu dalam romaji data (mis. "...masu." / "... desu.").
+  const diff = Math.abs(units.length - romaji.length);
+  if (diff > 2) return { aligned: false };
+  while (units.length > romaji.length && units.length > 1){
+    const last = units.pop(); const prev = units.pop(); units.push(prev + last);
+  }
+  const mergedRo = [...romaji];
+  while (mergedRo.length > units.length && mergedRo.length > 1){
+    const last = mergedRo.pop(); const prev = mergedRo.pop();
+    mergedRo.push(prev + " " + last);
+  }
+  if (units.length !== mergedRo.length) return { aligned: false };
+  if (!units.length) return { aligned: false };
+  // Kalimat multi-kata yang menyusut jadi 1 pasangan berarti penyelarasan gagal: fallback.
+  if (units.length === 1 && /\s/.test(jp)) return { aligned: false };
+  // Tiap pasangan wajib berisi Jepang dan romaji yang tidak kosong.
+  const pairs = units.map((u, i) => [u, mergedRo[i]]);
+  if (pairs.some(([u, r]) => !u.trim() || !String(r || "").trim())) return { aligned: false };
+  return { aligned: true, pairs };
+}
+function alignedRomajiHTML(jpText, romajiText, meaning = "", stackClass = ""){
+  const result = alignRomajiPairs(jpText, romajiText);
+  if (!result.aligned){
+    // fallback gaya lama: kalimat utuh + romaji utuh, tidak dipasangkan per kata
+    return `<span class="jp-stack ${stackClass}">
+      <span class="jp-stack-jp jp">${jpText || ""}</span>
+      ${romajiText ? `<span class="jp-stack-romaji">${romajiText}</span>` : ""}
+      ${meaning ? `<span class="jp-stack-meaning">${meaning}</span>` : ""}
+    </span>`;
+  }
+  const words = result.pairs.map(([jp, ro]) =>
+    `<span class="rw-word"><span class="rw-jp jp">${jp}</span><span class="rw-ro">${ro}</span></span>`).join("");
+  return `<span class="jp-stack ${stackClass}"><span class="rw-line">${words}</span>${meaning ? `<span class="jp-stack-meaning">${meaning}</span>` : ""}</span>`;
+}
+
 function shuffle(array) { return [...array].sort(() => Math.random() - 0.5); }
 function sample(array, count) { return shuffle(array).slice(0, count); }
 function completionForLevel(level) {
@@ -309,7 +426,7 @@ function selectLesson(moduleId, scroll) {
   const examples = $(".example-list", panel);
   module.examples.forEach(([jp, romaji, meaning]) => {
     const card = document.createElement("div"); card.className = "example-card";
-    card.innerHTML = jpStackHTML({ jp, romaji, meaning, stackClass: "jp-stack-lesson" });
+    card.innerHTML = alignedRomajiHTML(jp, romaji, meaning, "jp-stack-lesson");
     card.appendChild(speakButton(jp));
     examples.appendChild(card);
   });
@@ -346,7 +463,7 @@ function renderKanaCard() {
   $("#cardScript").textContent = `${kanaScript === "hiragana" ? "Hiragana" : "Katakana"} • ${item.group}`;
   $("#cardRomaji").textContent = item.romaji;
   $("#cardBackKana").textContent = kana;
-  $("#cardExample").innerHTML = jpStackHTML({ jp: item.example[0], romaji: item.example[1], meaning: item.example[2], stackClass: "jp-stack-example" });
+  $("#cardExample").innerHTML = alignedRomajiHTML(item.example[0], item.example[1], item.example[2], "jp-stack-example");
   const key = `${kanaScript}:${item.romaji}:${kana}`;
   $("#markKana").textContent = progress.knownKana.includes(key) ? "✓ Sudah dikuasai" : "✓ Tandai sudah dikuasai";
   $("#kanaCounter").textContent = `${kanaIndex + 1} / ${KANA.length} • dikuasai: ${progress.knownKana.length}`;
@@ -644,6 +761,12 @@ function startQuiz() {
   renderQuizQuestion();
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
+function quizDisplayHTML(q) {
+  const jpText = q.displayJp || q.display || "";
+  const romajiText = q.displayRomaji || "";
+  if (romajiText) return alignedRomajiHTML(jpText, romajiText, "", "jp-stack-quiz");
+  return jpStackHTML({ jp: jpText, romaji: "", readings: q.displayReadings || [], meta: q.displayMeta || "", stackClass: "jp-stack-quiz" });
+}
 function renderQuizDots() {
   return quiz.questions.map((_, i) => {
     const res = quiz.results[i];
@@ -669,7 +792,7 @@ function renderQuizQuestion() {
     hiddenText.setAttribute("aria-label", "Teks soal disembunyikan untuk latihan mendengar");
     const reveal = document.createElement("button"); reveal.type = "button"; reveal.className = "text-button small"; reveal.textContent = "Tampilkan teks";
     reveal.addEventListener("click", () => {
-      hiddenText.innerHTML = jpStackHTML({ jp: q.displayJp || q.display, romaji: q.displayRomaji || "", readings: q.displayReadings || [], stackClass: "jp-stack-quiz" });
+      hiddenText.innerHTML = quizDisplayHTML(q);
       reveal.hidden = true;
     });
     wrap.appendChild(hiddenText); wrap.appendChild(reveal);
@@ -677,13 +800,7 @@ function renderQuizQuestion() {
     display.appendChild(speakButton(q.speakText, "🔊 Dengarkan soal"));
   } else {
     const main = document.createElement("div"); main.className = "quiz-question-main";
-    main.innerHTML = jpStackHTML({
-      jp: q.displayJp || q.display,
-      romaji: q.displayRomaji || "",
-      readings: q.displayReadings || [],
-      meta: q.displayMeta || "",
-      stackClass: "jp-stack-quiz"
-    });
+    main.innerHTML = quizDisplayHTML(q);
     display.appendChild(main);
     if (q.speakText) display.appendChild(speakButton(q.speakText, "🔊 Dengar"));
   }
@@ -732,7 +849,7 @@ function revealListeningText() {
   const q = quiz.questions[quiz.index];
   if (q.type !== "listening") return;
   const hiddenText = $("#listeningHiddenText");
-  if (hiddenText) hiddenText.innerHTML = jpStackHTML({ jp: q.displayJp || q.display, romaji: q.displayRomaji || "", readings: q.displayReadings || [], stackClass: "jp-stack-quiz" });
+  if (hiddenText) hiddenText.innerHTML = quizDisplayHTML(q);
   $$(".listening-box .text-button").forEach(btn => { btn.hidden = true; });
 }
 function recordQuizAnswer(userAnswer, correct) {
@@ -767,13 +884,16 @@ function finishQuiz() {
     : "Tidak apa-apa, ini bagian dari belajar. Coba baca lagi review di bawah, lalu ulangi ya.";
   const reviewCards = quiz.results.map((res, i) => {
     const q = res.question;
-    const reviewStack = jpStackHTML({
-      jp: q.displayJp || q.display,
-      romaji: q.topic === "kana" ? q.answer : (q.reviewRomaji || q.displayRomaji || ""),
-      readings: q.reviewReadings || q.displayReadings || [],
-      meaning: q.topic === "kana" ? "" : q.answer,
-      stackClass: "jp-stack-review"
-    });
+    const reviewRomajiText = q.topic === "kana" ? q.answer : (q.reviewRomaji || q.displayRomaji || "");
+    const reviewStack = reviewRomajiText
+      ? alignedRomajiHTML(q.displayJp || q.display, reviewRomajiText, q.topic === "kana" ? "" : q.answer, "jp-stack-review")
+      : jpStackHTML({
+          jp: q.displayJp || q.display,
+          romaji: "",
+          readings: q.reviewReadings || q.displayReadings || [],
+          meaning: q.topic === "kana" ? "" : q.answer,
+          stackClass: "jp-stack-review"
+        });
     return `<article class="review-card ${res.correct ? "is-correct" : "is-wrong"}">
       <p class="review-head"><strong>Soal ${i + 1}</strong> <span class="badge">${QUIZ_TOPIC_LABELS[q.topic]}${q.type === "listening" ? " • Listening" : q.type === "type" ? " • Ketik" : ""}</span> <span class="${res.correct ? "ans-correct" : "ans-wrong"}">${res.correct ? "✓ Benar" : "✗ Salah"}</span></p>
       <p class="review-question">${q.prompt}</p>
