@@ -191,6 +191,28 @@ function speakButton(text, label = "🔊") {
   btn.dataset.originalLabel = label;
   btn.setAttribute("aria-label", `Dengarkan: ${text}`); btn.addEventListener("click", () => speak(text, btn)); return btn;
 }
+
+/* Komponen presentasi yang dipakai ulang: Jepang di atas, romaji/bacaan tepat di bawahnya, lalu arti Indonesia. */
+function jpStackHTML({ jp, romaji = "", readings = [], meaning = "", meta = "", stackClass = "" } = {}) {
+  const readingLines = (Array.isArray(readings) ? readings : [readings]).filter(Boolean)
+    .map(reading => `<span class="jp-stack-reading">${reading}</span>`).join("");
+  return `<span class="jp-stack ${stackClass}">
+    ${jp ? `<span class="jp-stack-jp jp">${jp}</span>` : ""}
+    ${romaji ? `<span class="jp-stack-romaji">${romaji}</span>` : ""}${readingLines}
+    ${meaning ? `<span class="jp-stack-meaning">${meaning}</span>` : ""}
+    ${meta ? `<span class="jp-stack-meta">${meta}</span>` : ""}
+  </span>`;
+}
+function exampleStackHTML(example, stackClass = "") {
+  const match = String(example || "").match(/^(.*?)[（(]([^（）()]+)[）)]\s*[—–-]\s*(.+)$/);
+  if (!match) return `<p class="meaning ${stackClass}">${example || ""}</p>`;
+  return jpStackHTML({ jp: match[1].trim(), romaji: match[2].trim(), meaning: match[3].trim(), stackClass: `jp-stack-example ${stackClass}` });
+}
+function translatedExampleHTML(example, stackClass = "") {
+  const match = String(example || "").match(/^(.+?)\s*[—–-]\s*(.+)$/);
+  if (!match) return `<p class="meaning ${stackClass}">${example || ""}</p>`;
+  return jpStackHTML({ jp: match[1].trim(), meaning: match[2].trim(), stackClass: `jp-stack-example ${stackClass}` });
+}
 function shuffle(array) { return [...array].sort(() => Math.random() - 0.5); }
 function sample(array, count) { return shuffle(array).slice(0, count); }
 function completionForLevel(level) {
@@ -287,14 +309,14 @@ function selectLesson(moduleId, scroll) {
   const examples = $(".example-list", panel);
   module.examples.forEach(([jp, romaji, meaning]) => {
     const card = document.createElement("div"); card.className = "example-card";
-    card.innerHTML = `<div class="example-jp jp">${jp}</div><div class="romaji">${romaji}</div><div class="meaning">${meaning}</div>`;
+    card.innerHTML = jpStackHTML({ jp, romaji, meaning, stackClass: "jp-stack-lesson" });
     card.appendChild(speakButton(jp));
     examples.appendChild(card);
   });
   const vocab = $(".vocab-list", panel);
   module.vocab.forEach(([jp, reading, romaji, meaning]) => {
     const card = document.createElement("div"); card.className = "vocab-card";
-    card.innerHTML = `<strong class="jp">${jp}</strong> <span class="romaji">${romaji}</span><div class="meaning">${meaning} • bacaan: ${reading}</div>`;
+    card.innerHTML = jpStackHTML({ jp, romaji, meaning, meta: `Bacaan: ${reading}`, stackClass: "jp-stack-vocab" });
     card.appendChild(speakButton(reading));
     vocab.appendChild(card);
   });
@@ -323,7 +345,8 @@ function renderKanaCard() {
   $("#cardKana").textContent = kana;
   $("#cardScript").textContent = `${kanaScript === "hiragana" ? "Hiragana" : "Katakana"} • ${item.group}`;
   $("#cardRomaji").textContent = item.romaji;
-  $("#cardExample").textContent = `${item.example[0]} (${item.example[1]}) — ${item.example[2]}`;
+  $("#cardBackKana").textContent = kana;
+  $("#cardExample").innerHTML = jpStackHTML({ jp: item.example[0], romaji: item.example[1], meaning: item.example[2], stackClass: "jp-stack-example" });
   const key = `${kanaScript}:${item.romaji}:${kana}`;
   $("#markKana").textContent = progress.knownKana.includes(key) ? "✓ Sudah dikuasai" : "✓ Tandai sudah dikuasai";
   $("#kanaCounter").textContent = `${kanaIndex + 1} / ${KANA.length} • dikuasai: ${progress.knownKana.length}`;
@@ -338,7 +361,7 @@ function renderKanaChart(filter = "") {
     const key = `${kanaScript}:${item.romaji}:${kana}`;
     const cell = document.createElement("button"); cell.type = "button";
     cell.className = `kana-cell ${progress.knownKana.includes(key) ? "mastered" : ""}`;
-    cell.innerHTML = `<b class="jp">${kana}</b><span>${item.romaji}</span>`;
+    cell.innerHTML = jpStackHTML({ jp: kana, romaji: item.romaji, stackClass: "jp-stack-compact" });
     cell.addEventListener("click", () => { kanaIndex = KANA.indexOf(item); cardFlipped = false; renderKanaCard(); renderKanaChart($("#kanaSearch").value); });
     chart.appendChild(cell);
   });
@@ -370,9 +393,9 @@ function renderKanji() {
   if (!results.length) { grid.innerHTML = `<div class="empty-state">Tidak ada kanji yang cocok. Coba kata kunci lain.</div>`; return; }
   results.forEach(k => {
     const card = document.createElement("article"); card.className = "kanji-card";
-    card.innerHTML = `<div class="kanji-char jp">${k.char}</div><span class="badge">${levelById(k.level).code}</span>
-      <dl><dt>Onyomi</dt><dd>${k.onyomi}</dd><dt>Kunyomi</dt><dd>${k.kunyomi}</dd><dt>Arti</dt><dd>${k.meaning}</dd></dl>
-      <p class="meaning">${k.example}</p>`;
+    card.innerHTML = `<div class="kanji-level"><span class="badge">${levelById(k.level).code}</span></div>
+      ${jpStackHTML({ jp: k.char, readings: [`<small>Onyomi</small>${k.onyomi}`, `<small>Kunyomi</small>${k.kunyomi}`], meaning: k.meaning, stackClass: "jp-stack-kanji" })}
+      ${exampleStackHTML(k.example, "kanji-example")}`;
     card.appendChild(speakButton(k.char));
     grid.appendChild(card);
   });
@@ -391,9 +414,9 @@ function renderSearch(query = "") {
   const vocabResults = allVocab().filter(v => `${v.jp} ${v.reading} ${v.romaji} ${v.meaning}`.toLowerCase().includes(q)).slice(0, 12);
   const kanjiResults = KANJI.filter(k => `${k.char} ${k.onyomi} ${k.kunyomi} ${k.meaning} ${k.example}`.toLowerCase().includes(q)).slice(0, 8);
   const grammarResults = GRAMMAR_INDEX.filter(g => `${g.pattern} ${g.meaning} ${g.example}`.toLowerCase().includes(q)).slice(0, 8);
-  vocabResults.forEach(v => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">${v.level}</span><h3 class="jp">${v.jp}</h3><p><span class="romaji">${v.romaji}</span><br><span class="meaning">${v.meaning} • dari: ${v.source}</span></p>`; el.appendChild(speakButton(v.reading)); box.appendChild(el); });
-  kanjiResults.forEach(k => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">Kanji ${levelById(k.level).code}</span><h3 class="jp">${k.char}</h3><p class="meaning">${k.meaning}<br>On: ${k.onyomi} • Kun: ${k.kunyomi}<br>${k.example}</p>`; el.appendChild(speakButton(k.char)); box.appendChild(el); });
-  grammarResults.forEach(g => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">Grammar ${g.level.toUpperCase()}</span><h3 class="jp">${g.pattern}</h3><p class="meaning">${g.meaning}<br>${g.example}</p>`; box.appendChild(el); });
+  vocabResults.forEach(v => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">${v.level}</span>${jpStackHTML({ jp: v.jp, romaji: v.romaji, meaning: v.meaning, meta: `Dari: ${v.source}`, stackClass: "jp-stack-search" })}`; el.appendChild(speakButton(v.reading)); box.appendChild(el); });
+  kanjiResults.forEach(k => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">Kanji ${levelById(k.level).code}</span>${jpStackHTML({ jp: k.char, readings: [`<small>Onyomi</small>${k.onyomi}`, `<small>Kunyomi</small>${k.kunyomi}`], meaning: k.meaning, stackClass: "jp-stack-search" })}${exampleStackHTML(k.example, "kanji-example")}`; el.appendChild(speakButton(k.char)); box.appendChild(el); });
+  grammarResults.forEach(g => { const el = document.createElement("div"); el.className = "result-card"; el.innerHTML = `<span class="badge">Grammar ${g.level.toUpperCase()}</span>${jpStackHTML({ jp: g.pattern, meaning: g.meaning, stackClass: "jp-stack-search" })}${translatedExampleHTML(g.example)}`; box.appendChild(el); });
   if (!vocabResults.length && !kanjiResults.length && !grammarResults.length) box.innerHTML = `<div class="empty-state">Tidak ditemukan. Coba romaji (taberu), arti Indonesia (makan), atau pola (はず).</div>`;
 }
 
@@ -467,7 +490,7 @@ function buildQuizQuestion(topic, cfg) {
     return {
       topic, type: qType,
       prompt: `Apa romaji untuk ${scriptLabel.toLowerCase()} ini?`,
-      display: char, displayMeta: scriptLabel, speakText: char,
+      display: char, displayJp: char, displayRomaji: "", reviewRomaji: item.romaji, displayMeta: scriptLabel, speakText: char,
       answer: item.romaji, accepted: [item.romaji],
       options: cfg.shuffleOptions ? shuffle([item.romaji, ...wrong]) : [item.romaji, ...wrong],
       explain: `${char} (${scriptLabel.toLowerCase()}) dibaca "${item.romaji}". Contoh kata: ${item.example[0]} (${item.example[1]}) — ${item.example[2]}.`
@@ -481,6 +504,7 @@ function buildQuizQuestion(topic, cfg) {
       topic, type: qType,
       prompt: "Apa arti kata ini?",
       display: cfg.showRomaji ? `${item.jp} (${item.romaji})` : item.jp,
+      displayJp: item.jp, displayRomaji: cfg.showRomaji ? item.romaji : "", reviewRomaji: item.romaji,
       displayMeta: `${item.levelCode} • dari: ${item.source}`, speakText: item.reading,
       answer: item.meaning, accepted: [item.meaning, ...item.meaning.split("/")],
       options: cfg.shuffleOptions ? shuffle([item.meaning, ...wrong]) : [item.meaning, ...wrong],
@@ -495,6 +519,7 @@ function buildQuizQuestion(topic, cfg) {
       topic, type: qType,
       prompt: "Apa arti kanji ini?",
       display: item.char,
+      displayJp: item.char, displayRomaji: "", displayReadings: cfg.showRomaji ? [`<small>Onyomi</small>${item.onyomi}`, `<small>Kunyomi</small>${item.kunyomi}`] : [], reviewReadings: [`<small>Onyomi</small>${item.onyomi}`, `<small>Kunyomi</small>${item.kunyomi}`],
       displayMeta: cfg.showRomaji ? `On: ${item.onyomi} • Kun: ${item.kunyomi}` : "",
       speakText: item.char,
       answer: item.meaning, accepted: [item.meaning, ...item.meaning.split("/")],
@@ -509,6 +534,7 @@ function buildQuizQuestion(topic, cfg) {
     topic, type: qType,
     prompt: "Apa fungsi pola grammar ini?",
     display: item.pattern,
+    displayJp: item.pattern, displayRomaji: "",
     displayMeta: item.level.toUpperCase(),
     speakText: (item.example || "").split("—")[0].trim() || null,
     answer: item.meaning, accepted: [item.meaning],
@@ -636,17 +662,29 @@ function renderQuizQuestion() {
     <div class="quiz-answer-zone"></div>
     <div id="quizFeedback" class="quiz-feedback" aria-live="polite"></div>`;
   const display = $(".quiz-display", panel);
+  display.classList.add("quiz-question-row");
   if (q.type === "listening") {
-    const wrap = document.createElement("div"); wrap.className = "listening-box";
-    wrap.appendChild(speakButton(q.speakText, "🔊 Dengarkan soal"));
+    const wrap = document.createElement("div"); wrap.className = "listening-box quiz-question-main";
     const hiddenText = document.createElement("p"); hiddenText.className = "listening-hidden jp"; hiddenText.id = "listeningHiddenText"; hiddenText.textContent = "• • •";
     hiddenText.setAttribute("aria-label", "Teks soal disembunyikan untuk latihan mendengar");
     const reveal = document.createElement("button"); reveal.type = "button"; reveal.className = "text-button small"; reveal.textContent = "Tampilkan teks";
-    reveal.addEventListener("click", () => { hiddenText.textContent = q.display; reveal.hidden = true; });
+    reveal.addEventListener("click", () => {
+      hiddenText.innerHTML = jpStackHTML({ jp: q.displayJp || q.display, romaji: q.displayRomaji || "", readings: q.displayReadings || [], stackClass: "jp-stack-quiz" });
+      reveal.hidden = true;
+    });
     wrap.appendChild(hiddenText); wrap.appendChild(reveal);
     display.appendChild(wrap);
+    display.appendChild(speakButton(q.speakText, "🔊 Dengarkan soal"));
   } else {
-    display.innerHTML = `<p class="example-jp jp">${q.display}</p>${q.displayMeta ? `<p class="muted">${q.displayMeta}</p>` : ""}`;
+    const main = document.createElement("div"); main.className = "quiz-question-main";
+    main.innerHTML = jpStackHTML({
+      jp: q.displayJp || q.display,
+      romaji: q.displayRomaji || "",
+      readings: q.displayReadings || [],
+      meta: q.displayMeta || "",
+      stackClass: "jp-stack-quiz"
+    });
+    display.appendChild(main);
     if (q.speakText) display.appendChild(speakButton(q.speakText, "🔊 Dengar"));
   }
   const zone = $(".quiz-answer-zone", panel);
@@ -694,7 +732,7 @@ function revealListeningText() {
   const q = quiz.questions[quiz.index];
   if (q.type !== "listening") return;
   const hiddenText = $("#listeningHiddenText");
-  if (hiddenText) hiddenText.textContent = q.display;
+  if (hiddenText) hiddenText.innerHTML = jpStackHTML({ jp: q.displayJp || q.display, romaji: q.displayRomaji || "", readings: q.displayReadings || [], stackClass: "jp-stack-quiz" });
   $$(".listening-box .text-button").forEach(btn => { btn.hidden = true; });
 }
 function recordQuizAnswer(userAnswer, correct) {
@@ -729,9 +767,17 @@ function finishQuiz() {
     : "Tidak apa-apa, ini bagian dari belajar. Coba baca lagi review di bawah, lalu ulangi ya.";
   const reviewCards = quiz.results.map((res, i) => {
     const q = res.question;
+    const reviewStack = jpStackHTML({
+      jp: q.displayJp || q.display,
+      romaji: q.topic === "kana" ? q.answer : (q.reviewRomaji || q.displayRomaji || ""),
+      readings: q.reviewReadings || q.displayReadings || [],
+      meaning: q.topic === "kana" ? "" : q.answer,
+      stackClass: "jp-stack-review"
+    });
     return `<article class="review-card ${res.correct ? "is-correct" : "is-wrong"}">
       <p class="review-head"><strong>Soal ${i + 1}</strong> <span class="badge">${QUIZ_TOPIC_LABELS[q.topic]}${q.type === "listening" ? " • Listening" : q.type === "type" ? " • Ketik" : ""}</span> <span class="${res.correct ? "ans-correct" : "ans-wrong"}">${res.correct ? "✓ Benar" : "✗ Salah"}</span></p>
-      <p class="review-question">${q.prompt}<br><strong class="jp">${q.display}</strong></p>
+      <p class="review-question">${q.prompt}</p>
+      ${reviewStack}
       <p>Jawaban kamu: <span class="${res.correct ? "ans-correct" : "ans-wrong"}">${res.userAnswer}</span><br>Jawaban benar: <span class="ans-correct">${q.answer}</span></p>
       ${q.explain ? `<p class="meaning">${q.explain}</p>` : ""}
     </article>`;
