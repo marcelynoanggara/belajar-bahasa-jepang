@@ -249,3 +249,14 @@ section{padding:34px 0}.section-heading{display:flex;justify-content:space-betwe
 }
 :focus-visible{outline:3px solid rgba(200,64,42,.45);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+/* ===== Penjelasan materi (modul dibuka penuh, gaya belajar mendalam) ===== */
+.lesson-panel .explain-list{display:grid;gap:16px}
+.explain-block{background:var(--cream,#fff8ec);border:1px solid var(--line,#e8ddc9);border-radius:18px;padding:16px 18px}
+.explain-block h5{margin:0 0 8px;font-size:17px;color:var(--indigo,#172554)}
+.explain-block p{margin:0 0 9px;line-height:1.75}
+.explain-block p:last-child{margin-bottom:0}
+.explain-block p strong, .explain-block li strong{color:var(--shu,#c8402a)}
+.explain-examples{margin-top:10px}
+.explain-examples .example-card{background:#fff}
+@media (max-width:640px){ .explain-block{padding:14px} }

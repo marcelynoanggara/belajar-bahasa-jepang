@@ -420,6 +420,14 @@ function selectLesson(moduleId, scroll) {
     <h3>${module.title}</h3><p class="intro">${module.intro}</p>
     <div class="pattern-box">${module.pattern}</div>
     <h4>Fokus materi</h4><ul class="focus-list">${module.focus.map(f => `<li>${f}</li>`).join("")}</ul>
+    ${typeof EXPLAIN !== "undefined" && EXPLAIN[module.id] ? `
+    <h4>Penjelasan materi</h4>
+    <div class="explain-list">${EXPLAIN[module.id].map(x => `
+      <section class="explain-block">
+        ${x.h ? `<h5>${x.h}</h5>` : ""}
+        ${(x.p || []).map(t => `<p>${t}</p>`).join("")}
+      </section>`).join("")}
+    </div>` : ""}
     <h4>Contoh kalimat</h4><div class="example-list"></div>
     <h4>Kosakata modul</h4><div class="vocab-list"></div>
     <button class="button primary wide" id="completeLesson" type="button">${progress.completedLessons.includes(module.id) ? "✓ Sudah selesai — tandai ulang" : `Tandai selesai (+${module.xp} XP)`}</button>`;
