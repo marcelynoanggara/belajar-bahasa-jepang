@@ -1,6 +1,4 @@
-# NihonGo Master — Belajar Bahasa Jepang 0 sampai N1
-
-Aplikasi web statis berbahasa Indonesia untuk belajar bahasa Jepang dari fondasi sampai JLPT N1. Dibangun tanpa build step sehingga dapat langsung dibuka atau dideploy ke GitHub Pages.
+# NihonGo Master — Belajar Bahasa Jepang
 
 ## Fitur versi pertama
 
