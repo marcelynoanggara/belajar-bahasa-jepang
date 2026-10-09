@@ -177,14 +177,18 @@
       <div id="levelGrid" class="level-grid"></div>
     </section>
 
-    <section id="lessons" class="section-shell split-layout">
-      <div>
-        <div class="section-heading compact"><div><p class="eyebrow">PELAJARAN</p><h2>Materi interaktif</h2></div></div>
-        <label class="field-label" for="lessonLevelFilter">Filter level</label>
+    <section id="lessons" class="section-shell">
+      <div class="section-heading"><div><p class="eyebrow">PELAJARAN</p><h2>Materi interaktif</h2></div><p>Pilih tingkat, lalu buka modulnya. Materi terbuka penuh di panel di samping — pola, penjelasan, contoh, dan kosakata — lalu tandai selesai untuk melanjutkan.</p></div>
+      <div class="lesson-toolbar">
+        <label class="field-label inline" for="lessonLevelFilter">Tingkat</label>
         <select id="lessonLevelFilter" class="select"></select>
-        <div id="lessonList" class="lesson-list"></div>
+        <input id="lessonSearch" class="search-input" type="search" placeholder="Cari materi… (mis. partikel, て, keigo)" aria-label="Cari materi pelajaran">
+        <span class="lesson-count" id="lessonCount" aria-live="polite"></span>
       </div>
-      <article class="lesson-panel" id="lessonPanel" aria-live="polite"></article>
+      <div class="split-layout">
+        <div id="lessonList" class="lesson-list" role="list"></div>
+        <article class="lesson-panel" id="lessonPanel" aria-live="polite"></article>
+      </div>
     </section>
 
     <section id="kana" class="section-shell">

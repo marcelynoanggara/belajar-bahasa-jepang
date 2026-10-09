@@ -260,3 +260,33 @@ section{padding:34px 0}.section-heading{display:flex;justify-content:space-betwe
 .explain-examples{margin-top:10px}
 .explain-examples .example-card{background:#fff}
 @media (max-width:640px){ .explain-block{padding:14px} }
+
+/* ===== Pelajaran (clean & mudah diakses) ===== */
+.lesson-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 4px}
+.lesson-toolbar .field-label.inline{margin:0}
+.lesson-toolbar .select{width:auto;min-width:200px;flex:0 1 240px}
+.lesson-toolbar .search-input{flex:1 1 220px;min-width:0}
+.lesson-count{margin-left:auto;color:var(--muted);font-size:13px;font-weight:700;white-space:nowrap}
+.lesson-list{gap:8px;max-height:560px;overflow:auto;padding-right:4px}
+.lesson-item{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px}
+.lesson-item .lesson-text{display:grid;gap:2px;min-width:0}
+.lesson-item .lesson-text strong{font-size:15px;line-height:1.35}
+.lesson-item .lesson-text .lesson-meta{font-size:12.5px}
+.lesson-num{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--cream);border:1px solid var(--line);display:grid;place-items:center;font-size:13px;font-weight:800;color:var(--indigo)}
+.lesson-item.is-done .lesson-num{background:#dcfae6;border-color:#a6f4c5;color:#027a48}
+.done-badge{margin-left:auto;flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:#027a48;color:#fff;display:grid;place-items:center;font-size:13px;font-weight:900}
+.lesson-empty{color:var(--muted);padding:14px;border:1px dashed var(--line);border-radius:14px;background:#fff}
+.lesson-nav{display:flex;gap:10px;margin-top:18px}
+.lesson-nav-btn{flex:1;text-align:left;border:1px solid var(--line);background:#fff;border-radius:14px;padding:12px 14px;cursor:pointer;display:grid;gap:2px}
+.lesson-nav-btn.next{text-align:right}
+.lesson-nav-btn:hover{border-color:var(--shu);box-shadow:0 8px 20px rgba(200,64,42,.10)}
+.lesson-nav-dir{font-size:12px;font-weight:800;color:var(--shu)}
+.lesson-nav-btn strong{color:var(--indigo);font-size:14px;line-height:1.35}
+.lesson-nav-meta{font-size:12px;color:var(--muted)}
+@media (max-width:900px){
+  .lesson-toolbar .select{flex:1 1 100%}
+  .lesson-toolbar .search-input{flex:1 1 100%}
+  .lesson-count{margin-left:0}
+  .lesson-list{max-height:340px}
+  .lesson-nav{flex-direction:column}
+}

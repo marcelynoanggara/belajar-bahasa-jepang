@@ -385,7 +385,11 @@ function renderLevels() {
       <p class="level-status"><span class="badge ${percent === 100 ? "done" : unlocked ? "" : "lock"}">${percent === 100 ? "Selesai" : unlocked ? "Siap dipelajari" : "Terbuka setelah tingkat sebelumnya cukup selesai"}</span></p>
       <button class="button ghost small" type="button">Lihat ${level.modules.length} pelajaran di tingkat ini</button>`;
     card.querySelector("button").addEventListener("click", () => {
-      $("#lessonLevelFilter").value = level.id; renderLessonList(); document.querySelector("#lessons").scrollIntoView({ behavior: "smooth" });
+      $("#lessonLevelFilter").value = level.id;
+      const firstOpen = level.modules.find(m => !progress.completedLessons.includes(m.id)) || level.modules[0];
+      const full = allModules().find(m => m.id === (firstOpen && firstOpen.id));
+      if (full) { selectLesson(full.id, false); document.querySelector("#lessons").scrollIntoView({ behavior: "smooth" }); }
+      else { renderLessonList(); document.querySelector("#lessons").scrollIntoView({ behavior: "smooth" }); }
     });
     grid.appendChild(card);
   });
@@ -400,16 +404,29 @@ function initLessonFilter() {
 }
 function renderLessonList() {
   const filter = $("#lessonLevelFilter").value;
+  const query = (($("#lessonSearch") && $("#lessonSearch").value) || "").trim().toLowerCase();
   const list = $("#lessonList"); list.innerHTML = "";
-  allModules().filter(m => filter === "all" || m.levelId === filter).forEach(module => {
+  const mods = allModules().filter(m => (filter === "all" || m.levelId === filter) &&
+    (!query || `${m.title} ${m.type} ${m.levelCode} ${m.intro}`.toLowerCase().includes(query)));
+  mods.forEach((module, i) => {
     const done = progress.completedLessons.includes(module.id);
     const btn = document.createElement("button"); btn.type = "button";
-    btn.className = `lesson-item ${module.id === selectedLessonId ? "active" : ""}`;
-    btn.innerHTML = `<strong>${module.title}</strong><span>${module.levelCode} • ${module.type} • ±${module.minutes} menit</span>${done ? `<span class="done-label">✓ Selesai</span>` : ""}`;
+    btn.className = `lesson-item ${module.id === selectedLessonId ? "active" : ""} ${done ? "is-done" : ""}`;
+    btn.setAttribute("role", "listitem");
+    if (module.id === selectedLessonId) btn.setAttribute("aria-current", "true");
+    btn.innerHTML = `<span class="lesson-num">${i + 1}</span><span class="lesson-text"><strong>${module.title}</strong><span class="lesson-meta">${module.levelCode} • ${module.type} • ±${module.minutes} menit</span></span>${done ? `<span class="done-badge" aria-label="Sudah selesai">✓</span>` : ""}`;
     btn.addEventListener("click", () => selectLesson(module.id, false));
     list.appendChild(btn);
   });
+  if (!mods.length) list.innerHTML = `<p class="lesson-empty">Tidak ada materi yang cocok. Coba kata kunci lain atau pilih \"Semua level\".</p>`;
+  const doneCount = mods.filter(m => progress.completedLessons.includes(m.id)).length;
+  $("#lessonCount").textContent = mods.length ? `${doneCount} dari ${mods.length} materi selesai` : "";
   if (!selectedLessonId) selectLesson(nextRecommended().id, false);
+}
+function lessonNeighbors(moduleId) {
+  const mods = allModules();
+  const i = mods.findIndex(m => m.id === moduleId);
+  return { prev: i > 0 ? mods[i - 1] : null, next: i >= 0 && i < mods.length - 1 ? mods[i + 1] : null };
 }
 function selectLesson(moduleId, scroll) {
   const module = allModules().find(m => m.id === moduleId); if (!module) return;
@@ -430,7 +447,8 @@ function selectLesson(moduleId, scroll) {
     </div>` : ""}
     <h4>Contoh kalimat</h4><div class="example-list"></div>
     <h4>Kosakata modul</h4><div class="vocab-list"></div>
-    <button class="button primary wide" id="completeLesson" type="button">${progress.completedLessons.includes(module.id) ? "✓ Sudah selesai — tandai ulang" : `Tandai selesai (+${module.xp} XP)`}</button>`;
+    <button class="button primary wide" id="completeLesson" type="button">${progress.completedLessons.includes(module.id) ? "✓ Sudah selesai — tandai ulang" : `Tandai selesai (+${module.xp} XP)`}</button>
+    <nav class="lesson-nav" aria-label="Navigasi antar modul"></nav>`;
   const examples = $(".example-list", panel);
   module.examples.forEach(([jp, romaji, meaning]) => {
     const card = document.createElement("div"); card.className = "example-card";
@@ -451,6 +469,20 @@ function selectLesson(moduleId, scroll) {
     } else recordStudy(0);
     renderLevels(); renderLessonList(); selectLesson(module.id, false);
   });
+  const nav = $(".lesson-nav", panel);
+  if (nav) {
+    const { prev, next } = lessonNeighbors(module.id);
+    nav.innerHTML = `
+      ${prev ? `<button type="button" class="lesson-nav-btn" data-goto="${prev.id}"><span class="lesson-nav-dir">← Sebelumnya</span><strong>${prev.title}</strong><span class="lesson-nav-meta">${prev.levelCode} • ${prev.type}</span></button>` : `<span></span>`}
+      ${next ? `<button type="button" class="lesson-nav-btn next" data-goto="${next.id}"><span class="lesson-nav-dir">Berikutnya →</span><strong>${next.title}</strong><span class="lesson-nav-meta">${next.levelCode} • ${next.type}</span></button>` : `<span></span>`}`;
+    nav.querySelectorAll("[data-goto]").forEach(b => b.addEventListener("click", () => {
+      const target = allModules().find(m => m.id === b.dataset.goto);
+      if (!target) return;
+      const sel = $("#lessonLevelFilter");
+      if (sel && sel.value !== "all" && sel.value !== target.levelId) sel.value = target.levelId;
+      selectLesson(target.id, true);
+    }));
+  }
   if (scroll) panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function renderLessonListSelection() {
@@ -985,6 +1017,8 @@ function initMobileNav() {
 function init() {
   initMobileNav();
   renderDashboard(); renderLevels(); initLessonFilter(); renderLessonList(); selectLesson(nextRecommended().id, false);
+  const lessonSearch = $("#lessonSearch");
+  if (lessonSearch) lessonSearch.addEventListener("input", renderLessonList);
   initKana(); initKanji(); renderSearch(); renderBestScores();
   $("#globalSearch").addEventListener("input", e => renderSearch(e.target.value));
   initQuizConfig();
