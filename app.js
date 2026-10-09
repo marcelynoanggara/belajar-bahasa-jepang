@@ -365,7 +365,7 @@ function renderDashboard() {
   const next = nextRecommended();
   $("#nextLessonTitle").textContent = next.title;
   $("#nextLessonMeta").textContent = `${next.levelCode} • ${next.type} • ±${next.minutes} menit • +${next.xp} XP`;
-  $("#goNextLesson").onclick = () => selectLesson(next.id, true);
+  $("#goNextLesson").onclick = () => { location.hash = `lessons/${next.id}`; };
 }
 function renderLevels() {
   const grid = $("#levelGrid"); grid.innerHTML = "";
@@ -388,7 +388,7 @@ function renderLevels() {
       $("#lessonLevelFilter").value = level.id;
       const firstOpen = level.modules.find(m => !progress.completedLessons.includes(m.id)) || level.modules[0];
       const full = allModules().find(m => m.id === (firstOpen && firstOpen.id));
-      if (full) { selectLesson(full.id, false); document.querySelector("#lessons").scrollIntoView({ behavior: "smooth" }); }
+      if (full) { location.hash = `lessons/${full.id}`; }
       else { renderLessonList(); document.querySelector("#lessons").scrollIntoView({ behavior: "smooth" }); }
     });
     grid.appendChild(card);
@@ -415,7 +415,7 @@ function renderLessonList() {
     btn.setAttribute("role", "listitem");
     if (module.id === selectedLessonId) btn.setAttribute("aria-current", "true");
     btn.innerHTML = `<span class="lesson-num">${i + 1}</span><span class="lesson-text"><strong>${module.title}</strong><span class="lesson-meta">${module.levelCode} • ${module.type} • ±${module.minutes} menit</span></span>${done ? `<span class="done-badge" aria-label="Sudah selesai">✓</span>` : ""}`;
-    btn.addEventListener("click", () => selectLesson(module.id, false));
+    btn.addEventListener("click", () => { location.hash = `lessons/${module.id}`; });
     list.appendChild(btn);
   });
   if (!mods.length) list.innerHTML = `<p class="lesson-empty">Tidak ada materi yang cocok. Coba kata kunci lain atau pilih \"Semua level\".</p>`;
@@ -430,6 +430,7 @@ function lessonNeighbors(moduleId) {
 }
 function selectLesson(moduleId, scroll) {
   const module = allModules().find(m => m.id === moduleId); if (!module) return;
+  const changed = selectedLessonId !== moduleId;
   selectedLessonId = moduleId; renderLessonList();
   const panel = $("#lessonPanel");
   panel.innerHTML = `
@@ -480,10 +481,10 @@ function selectLesson(moduleId, scroll) {
       if (!target) return;
       const sel = $("#lessonLevelFilter");
       if (sel && sel.value !== "all" && sel.value !== target.levelId) sel.value = target.levelId;
-      selectLesson(target.id, true);
+      location.hash = `lessons/${target.id}`;
     }));
   }
-  if (scroll) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll && !document.body.classList.contains("lesson-view-active")) panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function renderLessonListSelection() {
   $$(".lesson-item").forEach(item => item.classList.remove("active"));
@@ -1014,11 +1015,37 @@ function initMobileNav() {
 }
 
 /* ===== Init ===== */
+/* ===== Routing tampilan: daftar (#lessons) vs halaman pelajaran (#lessons/<moduleId>) ===== */
+function lessonViewActive() { return document.body.classList.contains("lesson-view-active"); }
+function applyRoute() {
+  const m = String(location.hash || "").match(/^#lessons\/([a-z0-9-]+)$/i);
+  const view = $("#lessonView");
+  if (m) {
+    const module = allModules().find(x => x.id === m[1]);
+    if (module) {
+      selectLesson(module.id, false);
+      document.body.classList.add("lesson-view-active");
+      if (view) view.hidden = false;
+      window.scrollTo({ top: 0, behavior: "auto" });
+      return;
+    }
+  }
+  document.body.classList.remove("lesson-view-active");
+  if (view) view.hidden = true;
+  if (m && !allModules().some(x => x.id === m[1])) {
+    // hash modul tidak valid: seimbangkan ke daftar tanpa mengosongkan hash lain
+    if (String(location.hash || "").startsWith("#lessons/")) history.replaceState(null, "", "#lessons");
+  }
+}
 function init() {
   initMobileNav();
   renderDashboard(); renderLevels(); initLessonFilter(); renderLessonList(); selectLesson(nextRecommended().id, false);
   const lessonSearch = $("#lessonSearch");
   if (lessonSearch) lessonSearch.addEventListener("input", renderLessonList);
+  const backBtn = $("#backToLessons");
+  if (backBtn) backBtn.addEventListener("click", () => { history.back(); });
+  window.addEventListener("hashchange", applyRoute);
+  applyRoute();
   initKana(); initKanji(); renderSearch(); renderBestScores();
   $("#globalSearch").addEventListener("input", e => renderSearch(e.target.value));
   initQuizConfig();
@@ -1028,7 +1055,7 @@ function init() {
     event.preventDefault();
     const firstPrep = allModules().find(module => module.levelId === "prep") || nextRecommended();
     $("#lessonLevelFilter").value = "prep";
-    selectLesson(firstPrep.id, true);
+    location.hash = `lessons/${firstPrep.id}`;
   });
   $("#resetProgress").addEventListener("click", () => {
     if (confirm("Reset semua progres lokal di browser ini?")) { progress = defaultProgress(); saveProgress(); location.reload(); }

@@ -185,10 +185,12 @@
         <input id="lessonSearch" class="search-input" type="search" placeholder="Cari materi… (mis. partikel, て, keigo)" aria-label="Cari materi pelajaran">
         <span class="lesson-count" id="lessonCount" aria-live="polite"></span>
       </div>
-      <div class="split-layout">
-        <div id="lessonList" class="lesson-list" role="list"></div>
-        <article class="lesson-panel" id="lessonPanel" aria-live="polite"></article>
-      </div>
+      <div id="lessonList" class="lesson-list" role="list"></div>
+    </section>
+
+    <section id="lessonView" class="section-shell" hidden>
+      <button type="button" class="button ghost back-btn" id="backToLessons">← Kembali ke daftar materi</button>
+      <article class="lesson-panel" id="lessonPanel" aria-live="polite"></article>
     </section>
 
     <section id="kana" class="section-shell">

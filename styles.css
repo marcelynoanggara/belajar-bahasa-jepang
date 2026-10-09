@@ -290,3 +290,18 @@ section{padding:34px 0}.section-heading{display:flex;justify-content:space-betwe
   .lesson-list{max-height:340px}
   .lesson-nav{flex-direction:column}
 }
+
+/* ===== Halaman pelajaran (page-view) ===== */
+#lessonView[hidden]{display:none}
+body.lesson-view-active #dashboard,body.lesson-view-active #guide,body.lesson-view-active #quiz,
+body.lesson-view-active #roadmap,body.lesson-view-active #lessons,body.lesson-view-active #kana,
+body.lesson-view-active #kanji,body.lesson-view-active #about{display:none}
+body.lesson-view-active #lessonView{display:block}
+#lessonView .back-btn{margin-bottom:16px;min-height:44px}
+#lessonView .lesson-panel{max-width:900px;margin:0 auto}
+#lessonView .lesson-panel .example-list,#lessonView .lesson-panel .vocab-list{gap:12px}
+#lessons .lesson-list{max-height:640px}
+@media (max-width:900px){
+  #lessonView .back-btn{width:100%}
+  #lessons .lesson-list{max-height:420px}
+}
